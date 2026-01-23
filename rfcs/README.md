@@ -17,6 +17,7 @@ This directory contains design discussions and decisions for the 0xElite platfor
 | [RFC-001](./RFC-001-identity-and-login.md) | Identity and Login System | Accepted | 2026-01-23 |
 | [RFC-002](./RFC-002-sybil-prevention.md) | Sybil Prevention Mechanism | Accepted | 2026-01-23 |
 | [RFC-003](./RFC-003-task-assignment.md) | Task Assignment and Rejection | Accepted | 2026-01-23 |
+| [RFC-004](./RFC-004-data-architecture.md) | Data Architecture (On-chain vs Off-chain) | Accepted | 2026-01-23 |
 
 ## Template
 
