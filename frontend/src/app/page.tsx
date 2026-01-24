@@ -49,9 +49,9 @@ export default function Home() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="btn-primary text-lg">
+              <a href="/apply" className="btn-primary text-lg">
                 Apply as Developer
-              </button>
+              </a>
               <button className="btn-secondary text-lg">
                 Post a Project
               </button>
