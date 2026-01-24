@@ -40,11 +40,21 @@ npm run migrate
 
 ## Development
 
-Start development server with hot reload:
+Start API server with hot reload:
 
 ```bash
 npm run dev
 ```
+
+Start event listener service:
+
+```bash
+npm run dev:listener
+```
+
+**Note**: Both services should run simultaneously in separate terminals:
+- API server (port 3001): Handles HTTP requests
+- Event listener: Syncs blockchain events to database
 
 ## API Endpoints
 
@@ -158,8 +168,62 @@ List developers with pagination and filters.
 
 ```bash
 npm run build
+
+# Start API server
 npm start
+
+# Start event listener (in separate process)
+npm run start:listener
 ```
+
+## Event Listener Service
+
+The event listener service runs independently and synchronizes blockchain events with the database.
+
+### How It Works
+
+1. **Historical Sync**: On startup, syncs all past events from `START_BLOCK` to current block
+2. **Real-time Listening**: Continuously listens for new `Staked` events
+3. **Checkpoint System**: Saves last processed block to database for recovery
+4. **Retry Logic**: Automatically retries failed operations with exponential backoff
+5. **Health Monitoring**: Checks sync lag every 30 seconds
+
+### Event Processing
+
+When a `Staked` event is detected:
+1. Wait for block confirmations (default: 2)
+2. Update developer `stake_amount` in database
+3. Change developer `status` from 'pending' to 'active'
+4. Set `staked_at` timestamp
+5. Send welcome email (placeholder)
+
+### Recovery
+
+If the service crashes:
+1. Restarts automatically (via PM2 or systemd)
+2. Loads last processed block from `system_state` table
+3. Syncs from checkpoint to current block
+4. Resumes real-time listening
+
+### Configuration
+
+Event sync settings in `.env`:
+- `RPC_URL`: Blockchain RPC endpoint
+- `STAKE_VAULT_ADDRESS`: StakeVault contract address
+- `START_BLOCK`: Initial block to sync from (0 for full history)
+- `BATCH_SIZE`: Events per batch during historical sync (default: 1000)
+- `CONFIRMATIONS`: Block confirmations to wait (default: 2)
+- `RETRY_ATTEMPTS`: Failed event retry attempts (default: 3)
+- `RETRY_DELAY`: Delay between retries in ms (default: 5000)
+
+### Monitoring
+
+Health check endpoint available at: `GET /health` (API server only)
+
+For production, implement:
+- Metrics export (Prometheus)
+- Alerting (PagerDuty, Slack)
+- Log aggregation (DataDog, CloudWatch)
 
 ## Project Structure
 
@@ -168,19 +232,24 @@ backend/
 ├── src/
 │   ├── api/
 │   │   └── routes/
-│   │       └── developers.ts    # Developer API routes
+│   │       └── developers.ts         # Developer API routes
 │   ├── config/
-│   │   └── database.ts          # Database connection
+│   │   ├── database.ts               # Database connection
+│   │   └── eventSync.ts              # Event listener config
 │   ├── db/
-│   │   ├── migrate.ts           # Migration runner
-│   │   └── migrations/          # SQL migration files
-│   ├── services/                # Business logic services
-│   ├── types/                   # TypeScript type definitions
+│   │   ├── migrate.ts                # Migration runner
+│   │   └── migrations/               # SQL migration files
+│   ├── services/
+│   │   └── eventListeners/
+│   │       └── stakeListener.ts      # Blockchain event listener
+│   ├── types/                        # TypeScript type definitions
 │   ├── utils/
-│   │   ├── signature.ts         # Signature verification
-│   │   └── validation.ts        # Input validation
-│   └── index.ts                 # Express server entry point
-├── .env.example                 # Environment template
+│   │   ├── signature.ts              # Signature verification
+│   │   ├── validation.ts             # Input validation
+│   │   └── logger.ts                 # Logging utility
+│   ├── index.ts                      # API server entry point
+│   └── listener.ts                   # Event listener entry point
+├── .env.example                      # Environment template
 ├── package.json
 ├── tsconfig.json
 └── README.md
