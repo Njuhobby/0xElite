@@ -1,6 +1,41 @@
+'use client';
+
 import { ConnectWallet } from "@/components/ConnectWallet";
+import { useAccount } from 'wagmi';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function Home() {
+  const { address, isConnected } = useAccount();
+  const router = useRouter();
+  const [checkingDeveloper, setCheckingDeveloper] = useState(false);
+
+  useEffect(() => {
+    if (!isConnected || !address || checkingDeveloper) return;
+
+    const checkDeveloperStatus = async () => {
+      setCheckingDeveloper(true);
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === 'active') {
+            // Redirect active developers to dashboard
+            router.push('/dashboard/developer');
+          }
+        }
+      } catch (error) {
+        // Not a developer or error fetching - stay on home page
+      } finally {
+        setCheckingDeveloper(false);
+      }
+    };
+
+    checkDeveloperStatus();
+  }, [address, isConnected, router, checkingDeveloper]);
   return (
     <div className="min-h-screen bg-[#FAFAFA] bg-lines">
       {/* Navigation */}
