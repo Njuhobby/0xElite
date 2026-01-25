@@ -9,10 +9,12 @@ const router = express.Router();
 // Database and contract instances
 let db: Pool;
 let projectManagerContract: ethers.Contract;
+let escrowVaultContract: ethers.Contract;
 
-export function initialize(database: Pool, contract: ethers.Contract) {
+export function initialize(database: Pool, contract: ethers.Contract, escrowContract: ethers.Contract) {
   db = database;
   projectManagerContract = contract;
+  escrowVaultContract = escrowContract;
 }
 
 // =====================================================
@@ -242,8 +244,105 @@ router.put('/:id', async (req: Request, res: Response) => {
       values.push(JSON.stringify(deliverableUrls));
     }
 
+    // Handle milestone completion and payment release
     if (status === 'completed') {
-      updates.push(`completed_at = NOW()`);
+      // Get client tier to calculate platform fee
+      const clientResult = await db.query(
+        'SELECT projects_completed FROM clients WHERE wallet_address = $1',
+        [milestone.client_address]
+      );
+
+      if (clientResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'NOT_FOUND',
+          message: 'Client not found',
+        });
+      }
+
+      const projectsCompleted = parseInt(clientResult.rows[0].projects_completed);
+
+      // Calculate platform fee based on client tier
+      // Bronze (0-2 projects): 15%, Silver (3-9): 10%, Gold (10+): 5%
+      let platformFeePercentage: number;
+      if (projectsCompleted >= 10) {
+        platformFeePercentage = 0.05; // Gold: 5%
+      } else if (projectsCompleted >= 3) {
+        platformFeePercentage = 0.10; // Silver: 10%
+      } else {
+        platformFeePercentage = 0.15; // Bronze: 15%
+      }
+
+      const milestoneBudget = parseFloat(milestone.budget);
+      const platformFee = milestoneBudget * platformFeePercentage;
+      const developerPayment = milestoneBudget - platformFee;
+
+      // Get contract project ID
+      const projectResult = await db.query(
+        'SELECT contract_project_id FROM projects WHERE id = $1',
+        [milestone.project_id]
+      );
+
+      const contractProjectId = projectResult.rows[0].contract_project_id;
+
+      // Release payment to developer
+      try {
+        logger.info('Releasing payment for completed milestone', {
+          milestoneId: id,
+          contractProjectId,
+          developerPayment,
+          platformFee,
+        });
+
+        // Convert amounts to USDC format (6 decimals)
+        const developerPaymentUsdc = ethers.parseUnits(developerPayment.toFixed(6), 6);
+        const platformFeeUsdc = ethers.parseUnits(platformFee.toFixed(6), 6);
+
+        // Release payment to developer
+        const releaseTx = await escrowVaultContract.release(
+          contractProjectId,
+          milestone.assigned_developer,
+          developerPaymentUsdc
+        );
+        const releaseReceipt = await releaseTx.wait();
+
+        // Release platform fee
+        const feeTx = await escrowVaultContract.releaseFee(
+          contractProjectId,
+          platformFeeUsdc
+        );
+        await feeTx.wait();
+
+        // Update milestone with payment details
+        updates.push(`payment_amount = $${paramCount++}`);
+        values.push(developerPayment);
+        updates.push(`platform_fee = $${paramCount++}`);
+        values.push(platformFee);
+        updates.push(`payment_tx_hash = $${paramCount++}`);
+        values.push(releaseReceipt.hash);
+        updates.push(`paid_at = NOW()`);
+        updates.push(`completed_at = NOW()`);
+
+        if (reviewNotes) {
+          updates.push(`review_notes = $${paramCount++}`);
+          values.push(reviewNotes);
+        }
+
+        logger.info('Payment released successfully', {
+          milestoneId: id,
+          txHash: releaseReceipt.hash,
+          developerPayment,
+          platformFee,
+        });
+      } catch (error: any) {
+        logger.error('Failed to release payment', { error, milestoneId: id });
+        return res.status(500).json({
+          error: 'PAYMENT_FAILED',
+          message: 'Failed to release escrow payment. Milestone not marked as completed.',
+          details: error.message,
+        });
+      }
+    } else {
+      // For non-completed status updates, just update the status
       if (reviewNotes) {
         updates.push(`review_notes = $${paramCount++}`);
         values.push(reviewNotes);

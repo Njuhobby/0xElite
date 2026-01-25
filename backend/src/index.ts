@@ -60,7 +60,7 @@ const escrowVaultContract = new ethers.Contract(escrowVaultAddress, escrowVaultA
 
 // Initialize routes with dependencies
 initializeProjects(db, projectManagerContract);
-initializeMilestones(db, projectManagerContract);
+initializeMilestones(db, projectManagerContract, escrowVaultContract);
 initializeClients(db);
 initializeEscrow(db, escrowVaultContract);
 
