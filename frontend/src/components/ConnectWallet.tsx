@@ -1,11 +1,31 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 
 export function ConnectWallet() {
+  const [mounted, setMounted] = useState(false)
   const { address, isConnected } = useAccount()
   const { connect, connectors, isPending } = useConnect()
   const { disconnect } = useDisconnect()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!mounted) {
+    return (
+      <div className="flex gap-2">
+        <button
+          disabled
+          className="btn-primary text-sm opacity-50"
+        >
+          Connect Wallet
+        </button>
+      </div>
+    )
+  }
 
   if (isConnected) {
     return (
