@@ -45,12 +45,32 @@ interface Project {
   completedAt?: string;
 }
 
+interface EscrowData {
+  escrow: {
+    projectId: string;
+    totalDeposited: number;
+    totalReleased: number;
+    escrowBalance: number;
+    isFrozen: boolean;
+    createdAt: string;
+    updatedAt: string;
+  };
+  breakdown: {
+    milestonesCompleted: number;
+    totalMilestones: number;
+    developerPayments: number;
+    platformFees: number;
+    pendingMilestones: number;
+  };
+}
+
 export default function ProjectDetailPage() {
   const { address: connectedAddress } = useAccount();
   const params = useParams();
   const projectId = params.id as string;
 
   const [project, setProject] = useState<Project | null>(null);
+  const [escrowData, setEscrowData] = useState<EscrowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -80,10 +100,31 @@ export default function ProjectDetailPage() {
 
       const data = await response.json();
       setProject(data);
+
+      // Fetch escrow data if project is active or completed
+      if (data.status === 'active' || data.status === 'completed') {
+        fetchEscrow();
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEscrow = async () => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/escrow/${projectId}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setEscrowData(data);
+      }
+    } catch (err) {
+      // Silently fail - escrow might not be deposited yet
+      console.error('Failed to fetch escrow data:', err);
     }
   };
 
@@ -239,6 +280,92 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Escrow Status */}
+        {escrowData && (
+          <div className="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-8 mb-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-white">Escrow Status</h2>
+              {escrowData.escrow.isFrozen && (
+                <span className="px-4 py-2 bg-red-600/20 border border-red-500 rounded-lg text-red-400 font-semibold">
+                  ⚠ Frozen (Dispute)
+                </span>
+              )}
+            </div>
+
+            {/* Escrow Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                <p className="text-gray-400 text-sm mb-2">Total Deposited</p>
+                <p className="text-3xl font-bold text-white">
+                  ${escrowData.escrow.totalDeposited.toFixed(2)}
+                </p>
+                <p className="text-gray-400 text-xs mt-1">USDC</p>
+              </div>
+
+              <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                <p className="text-gray-400 text-sm mb-2">Total Released</p>
+                <p className="text-3xl font-bold text-green-400">
+                  ${escrowData.escrow.totalReleased.toFixed(2)}
+                </p>
+                <p className="text-gray-400 text-xs mt-1">
+                  {escrowData.breakdown.milestonesCompleted} of {escrowData.breakdown.totalMilestones} milestones
+                </p>
+              </div>
+
+              <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                <p className="text-gray-400 text-sm mb-2">Available Balance</p>
+                <p className="text-3xl font-bold text-purple-400">
+                  ${escrowData.escrow.escrowBalance.toFixed(2)}
+                </p>
+                <p className="text-gray-400 text-xs mt-1">USDC in escrow</p>
+              </div>
+            </div>
+
+            {/* Payment Breakdown */}
+            <div className="border-t border-white/10 pt-6">
+              <h3 className="text-white font-semibold mb-4">Payment Breakdown</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Developer Payments</p>
+                  <p className="text-white text-lg font-semibold">
+                    ${escrowData.breakdown.developerPayments.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Platform Fees</p>
+                  <p className="text-white text-lg font-semibold">
+                    ${escrowData.breakdown.platformFees.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Pending Milestones</p>
+                  <p className="text-white text-lg font-semibold">
+                    ${escrowData.breakdown.pendingMilestones.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="border-t border-white/10 pt-6 mt-6">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-gray-400 text-sm">Project Progress</p>
+                <p className="text-white text-sm font-semibold">
+                  {Math.round((escrowData.escrow.totalReleased / escrowData.escrow.totalDeposited) * 100)}%
+                </p>
+              </div>
+              <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-600 to-pink-600 transition-all duration-500"
+                  style={{
+                    width: `${Math.min((escrowData.escrow.totalReleased / escrowData.escrow.totalDeposited) * 100, 100)}%`,
+                  }}
+                ></div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Milestones */}
         <div>
