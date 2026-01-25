@@ -341,6 +341,45 @@
       "artifacts": [
         "ReentrancyGuard"
       ]
+    },
+    "/Users/yihaojiang/Downloads/0xElite/contracts/contracts/ProjectManager.sol": {
+      "lastModificationDate": 1769340511895,
+      "contentHash": "4b8b711d80e85650802e2315541612fc",
+      "sourceName": "contracts/ProjectManager.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "ProjectManager"
+      ]
     }
   }
 }
