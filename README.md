@@ -23,35 +23,63 @@ The platform now supports:
 - Automatic account activation on stake
 - Public and private profile views
 
+✅ **Spec 2: Project Management - COMPLETE**
+
+The platform now supports:
+- Client registration with hybrid approach (minimal + full profiles)
+- Project creation with milestone-based deliverables
+- Auto-assignment algorithm (skill matching + availability + reputation)
+- On-chain project registration via ProjectManager contract
+- Milestone workflow (pending → in_progress → pending_review → completed)
+- Role-based visibility (client/developer/public views)
+- Automatic project completion when all milestones done
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  Frontend (Next.js + wagmi)                  │
-│                   localhost:3000                             │
-│  - /apply - Developer registration                           │
-│  - /developers/[address] - Profile pages                     │
-└────────────────────┬────────────────────┬────────────────────┘
-                     │                    │
-                     ↓                    ↓
-         ┌───────────────────┐  ┌─────────────────────┐
-         │   Backend API     │  │   StakeVault.sol    │
-         │  (Express + TS)   │  │   (Arbitrum)        │
-         │  localhost:3001   │  │                     │
-         │                   │  │  - stake(amount)    │
-         │  POST /developers │  │  - unstake(amount)  │
-         │  GET  /developers │  │  - getStake(addr)   │
-         │  PUT  /developers │  │                     │
-         └─────────┬─────────┘  └──────────┬──────────┘
-                   │                       │
-                   ↓                       │
-         ┌───────────────────┐             │
-         │    PostgreSQL     │             │
-         │    Database       │             │
-         │                   │◄────────────┘
-         │  - developers     │   Event Listener
-         │  - system_state   │   (Background Service)
-         └───────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Frontend (Next.js + wagmi)                        │
+│                       localhost:3000                                 │
+│  - /apply - Developer registration                                   │
+│  - /developers/[address] - Developer profiles                        │
+│  - /projects - Browse projects                                       │
+│  - /projects/create - Create project                                 │
+│  - /projects/[id] - Project details & milestones                     │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │
+                      ↓
+         ┌────────────────────────────────────────────┐
+         │         Backend API (Express + TS)         │
+         │             localhost:3001                 │
+         │                                            │
+         │  Developers: POST/GET/PUT /api/developers  │
+         │  Projects:   POST/GET/PUT /api/projects    │
+         │  Milestones: POST/PUT /api/milestones      │
+         │  Clients:    POST/GET /api/clients         │
+         │                                            │
+         │  + Matching Algorithm Service              │
+         │    (Auto-assignment logic)                 │
+         └─────────┬──────────────────────┬───────────┘
+                   │                      │
+                   ↓                      ↓
+         ┌───────────────────┐  ┌──────────────────────────┐
+         │   PostgreSQL      │  │  Smart Contracts         │
+         │   Database        │  │  (Arbitrum)              │
+         │                   │  │                          │
+         │  - developers     │  │  - StakeVault.sol        │
+         │  - clients        │  │    • stake(amount)       │
+         │  - projects       │  │    • unstake(amount)     │
+         │  - milestones     │  │                          │
+         │  - system_state   │  │  - ProjectManager.sol    │
+         │                   │◄─┤    • createProject()    │
+         │                   │  │    • assignDeveloper()   │
+         │                   │  │    • updateProjectState()│
+         └───────────────────┘  └──────────────────────────┘
+                                          │
+                                          │ Events
+                                          ↓
+                                 Event Listeners
+                              (Background Services)
 ```
 
 ## Tech Stack
@@ -84,9 +112,11 @@ The platform now supports:
 ├── contracts/                 # Smart contracts (Hardhat)
 │   ├── contracts/
 │   │   ├── StakeVault.sol    # USDC staking contract
+│   │   ├── ProjectManager.sol # Project lifecycle management
 │   │   └── MockUSDC.sol      # Test token
 │   ├── test/
-│   │   └── StakeVault.test.js  # 23 passing tests
+│   │   ├── StakeVault.test.js     # 23 passing tests
+│   │   └── ProjectManager.test.js # 34 passing tests
 │   ├── scripts/
 │   │   └── deploy.js         # Deployment script
 │   └── hardhat.config.js
@@ -95,15 +125,20 @@ The platform now supports:
 │   ├── src/
 │   │   ├── api/
 │   │   │   └── routes/
-│   │   │       └── developers.ts      # Developer API routes
+│   │   │       ├── developers.ts      # Developer API routes
+│   │   │       ├── projects.ts        # Project API routes
+│   │   │       ├── milestones.ts      # Milestone API routes
+│   │   │       └── clients.ts         # Client API routes
 │   │   ├── config/
 │   │   │   ├── database.ts            # PostgreSQL connection
 │   │   │   └── eventSync.ts           # Event listener config
 │   │   ├── db/
 │   │   │   ├── migrate.ts             # Migration runner
 │   │   │   └── migrations/
-│   │   │       └── 001_create_developers_table.sql
+│   │   │       ├── 001_create_developers_table.sql
+│   │   │       └── 002_create_project_tables.sql
 │   │   ├── services/
+│   │   │   ├── matchingAlgorithm.ts   # Auto-assignment logic
 │   │   │   └── eventListeners/
 │   │   │       └── stakeListener.ts   # Blockchain event sync
 │   │   ├── utils/
@@ -120,20 +155,33 @@ The platform now supports:
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── apply/
-│   │   │   │   └── page.tsx          # Registration page
-│   │   │   └── developers/[address]/
-│   │   │       └── page.tsx          # Profile page
+│   │   │   │   └── page.tsx          # Developer registration
+│   │   │   ├── developers/[address]/
+│   │   │   │   └── page.tsx          # Developer profile
+│   │   │   ├── projects/
+│   │   │   │   ├── page.tsx          # Browse projects
+│   │   │   │   ├── create/
+│   │   │   │   │   └── page.tsx      # Create project
+│   │   │   │   └── [id]/
+│   │   │   │       └── page.tsx      # Project details
+│   │   │   └── page.tsx              # Homepage
 │   │   └── components/
 │   │       ├── ConnectWallet.tsx
-│   │       └── developer/
-│   │           ├── DeveloperApplicationForm.tsx
-│   │           ├── StakeFlow.tsx
-│   │           └── EditProfileModal.tsx
+│   │       ├── developer/
+│   │       │   ├── DeveloperApplicationForm.tsx
+│   │       │   ├── StakeFlow.tsx
+│   │       │   └── EditProfileModal.tsx
+│   │       └── project/
+│   │           ├── MilestoneManager.tsx
+│   │           ├── MilestoneCard.tsx
+│   │           └── ProjectStatusBadge.tsx
 │   └── package.json
 │
 ├── specs/                     # Technical specifications
 │   ├── changes/
-│   │   └── add-developer-onboarding/   # Spec 1 implementation
+│   │   ├── archive/
+│   │   │   └── 20260125-add-developer-onboarding/  # Spec 1 (archived)
+│   │   └── add-project-management/  # Spec 2 (active)
 │   ├── rfcs/
 │   │   ├── RFC-001-identity-and-login.md
 │   │   ├── RFC-002-sybil-prevention.md
@@ -219,7 +267,9 @@ DATABASE_URL=postgresql://localhost:5432/oxelite_dev
 
 # Blockchain
 RPC_URL=https://arb-sepolia.g.alchemy.com/v2/YOUR_KEY
-STAKE_VAULT_ADDRESS=0x...  # From contract deployment
+STAKE_VAULT_ADDRESS=0x...         # From StakeVault deployment
+PROJECT_MANAGER_ADDRESS=0x...     # From ProjectManager deployment
+PRIVATE_KEY=your_backend_service_private_key  # For contract interactions
 START_BLOCK=0
 
 # Server
@@ -237,11 +287,12 @@ BATCH_SIZE=1000
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_USDC_ADDRESS=0x...
 NEXT_PUBLIC_STAKE_VAULT_ADDRESS=0x...
+NEXT_PUBLIC_PROJECT_MANAGER_ADDRESS=0x...
 ```
 
 ## Key Features Implemented
 
-### Developer Onboarding
+### Developer Onboarding (Spec 1)
 - ✅ Wallet-based registration (Sign-In with Ethereum)
 - ✅ Profile creation (email, GitHub, skills, bio, hourly rate)
 - ✅ USDC staking (150 USDC minimum)
@@ -249,21 +300,61 @@ NEXT_PUBLIC_STAKE_VAULT_ADDRESS=0x...
 - ✅ Profile viewing (public fields + private email for owner)
 - ✅ Profile editing with signature verification
 
+### Project Management (Spec 2)
+- ✅ Client registration (hybrid: minimal + full profiles)
+- ✅ Project creation with milestone breakdown
+- ✅ Auto-assignment algorithm (skill + availability + reputation scoring)
+- ✅ Milestone workflow (pending → in_progress → pending_review → completed)
+- ✅ Role-based visibility (client/developer/public views)
+- ✅ Automatic project completion when all milestones done
+- ✅ On-chain project registration and state tracking
+- ✅ Developer stats auto-update (projects_completed, total_earned)
+
 ### Smart Contracts
 - ✅ StakeVault contract (stake/unstake USDC)
-- ✅ 23 comprehensive tests (all passing)
-- ✅ Gas optimized (~563k deployment, ~52k additional stakes)
+  - 23 comprehensive tests (all passing)
+  - Gas optimized (~563k deployment, ~52k additional stakes)
+- ✅ ProjectManager contract (project lifecycle management)
+  - 34 comprehensive tests (all passing)
+  - Gas optimized (~718k deployment, ~122k create, ~74k assign)
 - ✅ Cumulative staking support
 - ✅ Ownership controls
+- ✅ Reentrancy protection
 
 ### Backend API
+**Developer Management:**
 - ✅ POST /api/developers - Create profile
 - ✅ GET /api/developers/:address - View profile
 - ✅ PUT /api/developers/:address - Update profile
 - ✅ GET /api/developers - List with filters
+
+**Project Management:**
+- ✅ POST /api/projects - Create project with auto-assignment
+- ✅ GET /api/projects/:id - View project details
+- ✅ PUT /api/projects/:id - Update draft projects
+- ✅ GET /api/projects - List with filters
+
+**Milestone Management:**
+- ✅ POST /api/projects/:id/milestones - Add milestone
+- ✅ PUT /api/milestones/:id - Update status (dev submit, client approve)
+
+**Client Management:**
+- ✅ POST /api/clients - Register client profile
+- ✅ GET /api/clients/:address - View client profile
+
+**Features:**
 - ✅ Wallet signature verification
 - ✅ Input validation and error handling
 - ✅ Uniqueness checks (wallet, email, GitHub)
+- ✅ Role-based access control
+
+### Matching Algorithm
+- ✅ Multi-factor scoring system (0-130 points)
+- ✅ Skill overlap (0-100 points, 50% minimum required)
+- ✅ Idle time bonus (0-20 points, fairness mechanism)
+- ✅ Reputation bonus (0-10 points, quality incentive)
+- ✅ Pending queue processing
+- ✅ No-refusal policy enforcement
 
 ### Event Synchronization
 - ✅ Historical event sync with batching
@@ -294,7 +385,40 @@ Content-Type: application/json
 }
 ```
 
-## User Flow
+**Example: Create Project**
+
+```bash
+POST /api/projects
+Content-Type: application/json
+
+{
+  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "message": "Create project on 0xElite...",
+  "signature": "0x8f3c7e2a1b4d5c6e...",
+  "title": "DeFi Dashboard Frontend",
+  "description": "Build a responsive React frontend for DeFi portfolio tracking",
+  "requiredSkills": ["React", "TypeScript", "Web3.js"],
+  "totalBudget": 5000,
+  "milestones": [
+    {
+      "title": "UI/UX Design & Setup",
+      "description": "Design mockups and initialize project",
+      "deliverables": ["Figma mockups", "React app setup"],
+      "budget": 1000
+    },
+    {
+      "title": "Wallet Integration",
+      "description": "Implement wallet connection and chain switching",
+      "deliverables": ["Web3 wallet integration", "Multi-chain support"],
+      "budget": 1500
+    }
+  ]
+}
+```
+
+## User Flows
+
+### Developer Onboarding Flow
 
 1. **Connect Wallet** - User connects via wagmi
 2. **Navigate to /apply** - Click "Apply as Developer"
@@ -307,6 +431,29 @@ Content-Type: application/json
 9. **Account Activated** - Status: "pending" → "active"
 10. **View Profile** - Navigate to /developers/[address]
 
+### Client Project Creation Flow
+
+1. **Connect Wallet** - Client connects wallet (no registration required)
+2. **Navigate to /projects/create** - Click "Create Project"
+3. **Fill Project Details** - Title, description, required skills, total budget
+4. **Add Milestones** - Break project into deliverables with individual budgets
+5. **Sign Message** - Verify wallet ownership
+6. **On-Chain Registration** - ProjectManager.createProject() called
+7. **Auto-Assignment Triggered** - Matching algorithm runs
+8. **Developer Assigned** - Best matching available developer assigned
+9. **Project Activated** - Status: "draft" → "active"
+10. **Track Progress** - View milestones at /projects/[id]
+
+### Milestone Completion Flow
+
+1. **Developer Starts Work** - Marks milestone "in_progress"
+2. **Developer Submits** - Provides deliverable URLs, marks "pending_review"
+3. **Client Reviews** - Views submitted deliverables
+4. **Client Approves** - Marks milestone "completed", adds review notes
+5. **Payment Released** - Escrow releases funds (Spec 3)
+6. **All Milestones Done** - Project auto-completes
+7. **Stats Updated** - Developer projects_completed++, client projects_completed++
+
 ## Testing
 
 ### Smart Contracts
@@ -315,13 +462,21 @@ cd contracts
 npx hardhat test
 ```
 
-**Coverage:** 23/23 tests passing
+**StakeVault Coverage:** 23/23 tests passing
 - Deployment validation
 - Staking (sufficient/insufficient amounts)
 - Cumulative staking
 - Unstaking
 - Access control
 - Reentrancy protection
+
+**ProjectManager Coverage:** 34/34 tests passing
+- Project creation and validation
+- Developer assignment
+- State transitions
+- Access control
+- Edge cases (rapid creation, state isolation)
+- View functions
 
 ### Backend API
 ```bash
@@ -353,37 +508,43 @@ Key architectural decisions documented in RFCs:
 ### Completed ✅
 - [x] **Spec 1: Developer Identity & Onboarding**
   - Smart contracts (StakeVault)
-  - Database schema
-  - Backend API
-  - Event listener
-  - Frontend pages
+  - Database schema (developers, system_state)
+  - Backend API (4 endpoints)
+  - Event listener (stake sync)
+  - Frontend pages (/apply, /developers/[address])
 
-### In Progress 🚧
-- [ ] **Spec 2: Project Management**
-  - Project creation and lifecycle
-  - Milestone management
-  - ProjectManager contract
+- [x] **Spec 2: Project Management**
+  - Smart contracts (ProjectManager)
+  - Database schema (projects, milestones, clients)
+  - Backend API (8 endpoints)
+  - Matching algorithm service (auto-assignment)
+  - Frontend pages (/projects, /projects/create, /projects/[id])
 
 ### Planned 📋
 - [ ] **Spec 3: Escrow System**
   - Milestone-based payments
   - EscrowVault contract
-  - Fund protection
+  - Fund protection and release logic
+  - Integration with milestone completion
 
-- [ ] **Spec 4: Matching & Assignment**
-  - Developer-project matching algorithm
-  - Invitation system
-  - Task assignment
+- [ ] **Spec 4: Matching & Assignment** (Partially Complete)
+  - ✅ Auto-assignment algorithm implemented
+  - ✅ Skill-based scoring
+  - ✅ No-refusal policy enforced
+  - [ ] Manual invitation system (optional)
+  - [ ] Developer preferences (future enhancement)
 
 - [ ] **Spec 5: Reviews & Ratings**
-  - Review submission
+  - Review submission (client → developer, developer → client)
   - Rating calculations
   - Reputation tracking
+  - Review display on profiles
 
 - [ ] **Spec 6: Dispute Resolution**
   - Dispute filing
   - DAO arbitration
   - DisputeDAO contract
+  - Evidence submission
 
 ## Development Scripts
 
@@ -419,9 +580,15 @@ npm run lint                # Run linter
 - ✅ Input validation on all endpoints
 - ✅ Safe ERC20 transfer checks
 - ✅ Uniqueness constraints (wallet, email, GitHub)
+- ✅ Role-based access control (client/developer permissions)
+- ✅ State transition validation (prevent invalid milestone/project states)
+- ✅ Budget validation (milestone budgets cannot exceed project budget)
+- ✅ Ownership verification (only project owner can update)
+- ✅ No-refusal policy enforcement (prevent selective work)
 - ⚠️ Smart contract audit pending
 - ⚠️ Rate limiting not yet implemented
 - ⚠️ Email verification not yet implemented
+- ⚠️ Escrow contract integration pending (Spec 3)
 
 ## Contributing
 
