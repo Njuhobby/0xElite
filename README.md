@@ -34,6 +34,17 @@ The platform now supports:
 - Role-based visibility (client/developer/public views)
 - Automatic project completion when all milestones done
 
+✅ **Spec 3: Escrow System - COMPLETE**
+
+The platform now supports:
+- USDC-based escrow for milestone payments
+- Client deposits full project budget to EscrowVault contract
+- Automatic payment release on milestone approval (developer + platform fee)
+- Per-project freeze capability for dispute resolution
+- Complete payment history and audit trail
+- Frontend deposit flow (approve → deposit → activate)
+- Real-time escrow status display with balance tracking
+
 ## Architecture
 
 ```
@@ -56,6 +67,7 @@ The platform now supports:
          │  Projects:   POST/GET/PUT /api/projects    │
          │  Milestones: POST/PUT /api/milestones      │
          │  Clients:    POST/GET /api/clients         │
+         │  Escrow:     POST/GET /api/escrow          │
          │                                            │
          │  + Matching Algorithm Service              │
          │    (Auto-assignment logic)                 │
@@ -70,10 +82,16 @@ The platform now supports:
          │  - clients        │  │    • stake(amount)       │
          │  - projects       │  │    • unstake(amount)     │
          │  - milestones     │  │                          │
-         │  - system_state   │  │  - ProjectManager.sol    │
-         │                   │◄─┤    • createProject()    │
-         │                   │  │    • assignDeveloper()   │
-         │                   │  │    • updateProjectState()│
+         │  - escrow_deposits│  │  - ProjectManager.sol    │
+         │  - payment_history│  │    • createProject()     │
+         │  - system_state   │  │    • assignDeveloper()   │
+         │                   │◄─┤    • updateProjectState()│
+         │                   │  │                          │
+         │                   │  │  - EscrowVault.sol       │
+         │                   │◄─┤    • deposit()           │
+         │                   │  │    • release()           │
+         │                   │  │    • releaseFee()        │
+         │                   │  │    • freeze()            │
          └───────────────────┘  └──────────────────────────┘
                                           │
                                           │ Events
@@ -113,10 +131,13 @@ The platform now supports:
 │   ├── contracts/
 │   │   ├── StakeVault.sol    # USDC staking contract
 │   │   ├── ProjectManager.sol # Project lifecycle management
-│   │   └── MockUSDC.sol      # Test token
+│   │   ├── EscrowVault.sol   # Milestone-based payment escrow
+│   │   └── test/
+│   │       └── MockERC20.sol # Test USDC token
 │   ├── test/
 │   │   ├── StakeVault.test.js     # 23 passing tests
-│   │   └── ProjectManager.test.js # 34 passing tests
+│   │   ├── ProjectManager.test.js # 34 passing tests
+│   │   └── EscrowVault.test.js    # 59 passing tests
 │   ├── scripts/
 │   │   └── deploy.js         # Deployment script
 │   └── hardhat.config.js
@@ -128,21 +149,27 @@ The platform now supports:
 │   │   │       ├── developers.ts      # Developer API routes
 │   │   │       ├── projects.ts        # Project API routes
 │   │   │       ├── milestones.ts      # Milestone API routes
-│   │   │       └── clients.ts         # Client API routes
+│   │   │       ├── clients.ts         # Client API routes
+│   │   │       └── escrow.ts          # Escrow API routes
 │   │   ├── config/
 │   │   │   ├── database.ts            # PostgreSQL connection
 │   │   │   └── eventSync.ts           # Event listener config
+│   │   ├── contracts/
+│   │   │   └── EscrowVault.json       # EscrowVault ABI
 │   │   ├── db/
 │   │   │   ├── migrate.ts             # Migration runner
 │   │   │   └── migrations/
 │   │   │       ├── 001_create_developers_table.sql
-│   │   │       └── 002_create_project_tables.sql
+│   │   │       ├── 002_create_project_tables.sql
+│   │   │       └── 003_create_escrow_tables.sql
 │   │   ├── services/
 │   │   │   ├── matchingAlgorithm.ts   # Auto-assignment logic
+│   │   │   ├── escrowEventListener.ts # Escrow event sync
 │   │   │   └── eventListeners/
-│   │   │       └── stakeListener.ts   # Blockchain event sync
+│   │   │       └── stakeListener.ts   # Stake event sync
 │   │   ├── utils/
 │   │   │   ├── signature.ts           # SIWE verification
+│   │   │   ├── signatureVerification.ts # Signature helper
 │   │   │   ├── validation.ts          # Input validation
 │   │   │   └── logger.ts              # Logging utility
 │   │   ├── types/
@@ -178,16 +205,37 @@ The platform now supports:
 │   └── package.json
 │
 ├── specs/                     # Technical specifications
+│   ├── capabilities/          # Behavioral requirements
+│   │   ├── developer-onboarding/
+│   │   ├── project-management/
+│   │   └── escrow-management/
+│   ├── data-models/           # Database schemas
+│   │   ├── developer/
+│   │   ├── client/
+│   │   ├── project/
+│   │   ├── milestone/
+│   │   ├── escrow/
+│   │   └── payment-history/
+│   ├── api/                   # API endpoints
+│   │   ├── developer-management/
+│   │   ├── project-management/
+│   │   └── escrow-management/
+│   ├── architecture/          # System design
+│   │   ├── stake-vault-contract/
+│   │   ├── project-manager-contract/
+│   │   ├── escrow-vault-contract/
+│   │   ├── escrow-event-listener/
+│   │   ├── event-sync-system/
+│   │   └── matching-algorithm/
 │   ├── changes/
-│   │   ├── archive/
-│   │   │   └── 20260125-add-developer-onboarding/  # Spec 1 (archived)
-│   │   └── add-project-management/  # Spec 2 (active)
-│   ├── rfcs/
-│   │   ├── RFC-001-identity-and-login.md
-│   │   ├── RFC-002-sybil-prevention.md
-│   │   ├── RFC-003-task-assignment.md
-│   │   └── RFC-004-data-architecture.md
-│   └── schema.md
+│   │   └── archive/
+│   │       ├── 20260125-add-developer-onboarding/  # Spec 1
+│   │       └── 20260125-add-escrow-system/         # Spec 3
+│   └── rfcs/
+│       ├── RFC-001-identity-and-login.md
+│       ├── RFC-002-sybil-prevention.md
+│       ├── RFC-003-task-assignment.md
+│       └── RFC-004-data-architecture.md
 │
 └── README.md
 ```
@@ -269,6 +317,7 @@ DATABASE_URL=postgresql://localhost:5432/oxelite_dev
 RPC_URL=https://arb-sepolia.g.alchemy.com/v2/YOUR_KEY
 STAKE_VAULT_ADDRESS=0x...         # From StakeVault deployment
 PROJECT_MANAGER_ADDRESS=0x...     # From ProjectManager deployment
+ESCROW_VAULT_ADDRESS=0x...        # From EscrowVault deployment
 PRIVATE_KEY=your_backend_service_private_key  # For contract interactions
 START_BLOCK=0
 
@@ -288,6 +337,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_USDC_ADDRESS=0x...
 NEXT_PUBLIC_STAKE_VAULT_ADDRESS=0x...
 NEXT_PUBLIC_PROJECT_MANAGER_ADDRESS=0x...
+NEXT_PUBLIC_ESCROW_VAULT_ADDRESS=0x...
 ```
 
 ## Key Features Implemented
@@ -310,6 +360,20 @@ NEXT_PUBLIC_PROJECT_MANAGER_ADDRESS=0x...
 - ✅ On-chain project registration and state tracking
 - ✅ Developer stats auto-update (projects_completed, total_earned)
 
+### Escrow System (Spec 3)
+- ✅ USDC-based escrow deposits (clients deposit full project budget)
+- ✅ Automatic payment release on milestone approval
+  - Developer payment (budget - platform fee)
+  - Platform fee collection (5-15% based on client tier)
+- ✅ Per-project freeze capability for dispute resolution
+- ✅ Payment history tracking (immutable audit trail)
+- ✅ Frontend deposit flow (approve USDC → deposit → activate)
+- ✅ Real-time escrow status display
+  - Total deposited, total released, available balance
+  - Payment breakdown (developer, platform, pending)
+  - Progress bar visualization
+- ✅ Event-driven synchronization (Deposited, Released, FeesCollected, Frozen)
+
 ### Smart Contracts
 - ✅ StakeVault contract (stake/unstake USDC)
   - 23 comprehensive tests (all passing)
@@ -317,6 +381,10 @@ NEXT_PUBLIC_PROJECT_MANAGER_ADDRESS=0x...
 - ✅ ProjectManager contract (project lifecycle management)
   - 34 comprehensive tests (all passing)
   - Gas optimized (~718k deployment, ~122k create, ~74k assign)
+- ✅ EscrowVault contract (milestone-based payment escrow)
+  - 59 comprehensive tests (all passing)
+  - Gas optimized (~132k deposit, ~91k release, ~50k freeze)
+  - USDC-only (6 decimals), no native ETH
 - ✅ Cumulative staking support
 - ✅ Ownership controls
 - ✅ Reentrancy protection
@@ -342,11 +410,20 @@ NEXT_PUBLIC_PROJECT_MANAGER_ADDRESS=0x...
 - ✅ POST /api/clients - Register client profile
 - ✅ GET /api/clients/:address - View client profile
 
+**Escrow Management:**
+- ✅ POST /api/escrow/deposit - Record escrow deposit (after on-chain tx)
+- ✅ GET /api/escrow/:projectId - View escrow status and balance
+- ✅ GET /api/escrow/:projectId/history - View payment history
+- ✅ POST /api/escrow/freeze - Freeze escrow (admin/dispute only)
+- ✅ POST /api/escrow/unfreeze - Unfreeze after dispute resolution
+
 **Features:**
 - ✅ Wallet signature verification
 - ✅ Input validation and error handling
 - ✅ Uniqueness checks (wallet, email, GitHub)
 - ✅ Role-based access control
+- ✅ Automatic payment release on milestone completion
+- ✅ Platform fee calculation (tier-based: 5-15%)
 
 ### Matching Algorithm
 - ✅ Multi-factor scoring system (0-130 points)
@@ -450,9 +527,20 @@ Content-Type: application/json
 2. **Developer Submits** - Provides deliverable URLs, marks "pending_review"
 3. **Client Reviews** - Views submitted deliverables
 4. **Client Approves** - Marks milestone "completed", adds review notes
-5. **Payment Released** - Escrow releases funds (Spec 3)
+5. **Payment Released** - Escrow automatically releases funds:
+   - Developer receives payment (milestone budget - platform fee)
+   - Platform collects fee (5-15% based on client tier)
+   - Both transactions recorded in payment_history
 6. **All Milestones Done** - Project auto-completes
 7. **Stats Updated** - Developer projects_completed++, client projects_completed++
+
+### Escrow Deposit Flow
+
+1. **Project Created** - Client creates project with milestones
+2. **Approve USDC** - Client approves EscrowVault to spend USDC
+3. **Deposit to Escrow** - Client deposits full project budget to EscrowVault
+4. **Record Deposit** - Backend records deposit and activates project
+5. **Track Status** - View escrow balance and payment history at /projects/[id]
 
 ## Testing
 
@@ -477,6 +565,16 @@ npx hardhat test
 - Access control
 - Edge cases (rapid creation, state isolation)
 - View functions
+
+**EscrowVault Coverage:** 59/59 tests passing
+- Deployment and configuration
+- Deposit functionality (validation, events, balance tracking)
+- Release functionality (developer payment, fee collection)
+- Freeze/unfreeze (dispute handling)
+- Dispute resolution (fund distribution)
+- Access control (onlyProjectManager, onlyDisputeDAO)
+- Edge cases (insufficient balance, frozen escrow)
+- Gas optimization verification
 
 ### Backend API
 ```bash
@@ -520,12 +618,16 @@ Key architectural decisions documented in RFCs:
   - Matching algorithm service (auto-assignment)
   - Frontend pages (/projects, /projects/create, /projects/[id])
 
+- [x] **Spec 3: Escrow System**
+  - Smart contract (EscrowVault - deposit, release, freeze)
+  - Database schema (escrow_deposits, payment_history)
+  - Backend API (5 escrow endpoints)
+  - Event listener (blockchain synchronization with checkpoint recovery)
+  - Milestone integration (automatic payment release on approval)
+  - Frontend deposit flow (3-step: approve → deposit → record)
+  - Frontend escrow status display (balances, breakdown, progress)
+
 ### Planned 📋
-- [ ] **Spec 3: Escrow System**
-  - Milestone-based payments
-  - EscrowVault contract
-  - Fund protection and release logic
-  - Integration with milestone completion
 
 - [ ] **Spec 4: Matching & Assignment** (Partially Complete)
   - ✅ Auto-assignment algorithm implemented
@@ -585,10 +687,13 @@ npm run lint                # Run linter
 - ✅ Budget validation (milestone budgets cannot exceed project budget)
 - ✅ Ownership verification (only project owner can update)
 - ✅ No-refusal policy enforcement (prevent selective work)
+- ✅ Escrow fund protection (per-project freeze capability)
+- ✅ Immutable payment history (trigger-enforced audit trail)
+- ✅ Safe ERC20 transfers (OpenZeppelin SafeERC20)
+- ✅ Payment atomicity (milestone only completed if payment succeeds)
 - ⚠️ Smart contract audit pending
 - ⚠️ Rate limiting not yet implemented
 - ⚠️ Email verification not yet implemented
-- ⚠️ Escrow contract integration pending (Spec 3)
 
 ## Contributing
 
