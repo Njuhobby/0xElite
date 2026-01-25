@@ -10,50 +10,43 @@ Represents individual deliverables within a project, each with its own budget, d
 
 ### Entity: Milestone
 
-Stores milestone information including deliverables, budget allocation, and completion tracking.
-
 **Table**: `milestones`
+
+Add payment tracking fields to existing milestones table.
+
+**New Fields**:
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
-| `id` | UUID | PRIMARY KEY, NOT NULL | Unique milestone identifier |
-| `project_id` | UUID | NOT NULL, FOREIGN KEY → projects(id) ON DELETE CASCADE | Parent project |
-| `milestone_number` | INTEGER | NOT NULL | Sequential number within project (1, 2, 3...) |
-| `title` | VARCHAR(200) | NOT NULL | Milestone title |
-| `description` | TEXT | NOT NULL | Detailed milestone description |
-| `deliverables` | JSONB | NOT NULL | Array of deliverable descriptions |
-| `budget` | DECIMAL(20,6) | NOT NULL, CHECK (budget > 0) | Milestone budget in USDC |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Status: pending, in_progress, pending_review, completed, disputed |
-| `started_at` | TIMESTAMP | NULL | When developer started working |
-| `submitted_at` | TIMESTAMP | NULL | When developer submitted for review |
-| `completed_at` | TIMESTAMP | NULL | When client approved completion |
-| `deliverable_urls` | JSONB | NULL | Array of URLs to submitted deliverables (GitHub PRs, deployed sites, etc.) |
-| `review_notes` | TEXT | NULL | Client's review notes |
-| `created_at` | TIMESTAMP | NOT NULL, DEFAULT NOW() | Milestone creation time |
-| `updated_at` | TIMESTAMP | NOT NULL, DEFAULT NOW() | Last update time |
+| `payment_amount` | DECIMAL(20,6) | NULL, CHECK (payment_amount >= 0) | Actual amount paid to developer (budget minus platform fee) |
+| `platform_fee` | DECIMAL(20,6) | NULL, CHECK (platform_fee >= 0) | Platform fee deducted from milestone budget |
+| `payment_tx_hash` | VARCHAR(66) | NULL | Blockchain transaction hash for payment release |
+| `paid_at` | TIMESTAMP | NULL | When payment was released to developer |
 
-**Indexes**:
-- `idx_milestones_project` ON `project_id` (for fetching project's milestones)
-- `idx_milestones_status` ON `status` (for filtering by status)
-- `idx_milestones_number` ON `(project_id, milestone_number)` UNIQUE (ensure unique numbering per project)
+**Modified Status Transitions**:
+```
+pending_review → completed now triggers:
+  1. Calculate platform fee
+  2. Call EscrowVault.release() for developer payment
+  3. Call EscrowVault.releaseFee() for platform fee
+  4. Update payment_amount, platform_fee, payment_tx_hash, paid_at
+  5. Only then update status to "completed"
 
-**Relationships**:
-```typescript
-Milestone {
-  belongsTo: [Project]
-  hasMany: []
-}
+If payment fails:
+  - Status remains "pending_review"
+  - Error logged and displayed to client
 ```
 
-**Status Transitions**:
-```
-pending → in_progress (developer starts work)
-in_progress → pending_review (developer submits)
-pending_review → completed (client approves)
-pending_review → in_progress (client requests revisions)
-in_progress → disputed (dispute filed)
-pending_review → disputed (dispute filed)
-```
+**Business Rules Changes**:
+- Milestone approval is atomic with payment release
+- Cannot mark milestone as completed without successful payment
+- Payment amount = budget - platform_fee
+- Platform fee tier based on client's project history (5-15%)
+
+## Related Specs
+
+- **Capabilities**: `capabilities/escrow-management/spec.md`, `capabilities/project-management/spec.md`
+- **Data Models**: `data-models/escrow/schema.md`, `data-models/payment-history/schema.md`
 
 ## Validation Rules
 
