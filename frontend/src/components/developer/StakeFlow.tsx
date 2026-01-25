@@ -1,24 +1,53 @@
 'use client';
 
 import { useState } from 'react';
-import { useContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
-import { parseUnits } from 'viem';
-import { useSignMessage } from 'wagmi';
+import { useWriteContract, useReadContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
+import { parseUnits, Address } from 'viem';
 
 // Contract ABIs
 const USDC_ABI = [
-  'function approve(address spender, uint256 amount) returns (bool)',
-  'function allowance(address owner, address spender) view returns (uint256)',
-];
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
 
 const STAKE_VAULT_ABI = [
-  'function stake(uint256 amount)',
-  'function requiredStake() view returns (uint256)',
-];
+  {
+    name: 'stake',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [],
+  },
+  {
+    name: 'requiredStake',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
 
-// TODO: Replace with actual contract addresses from environment
-const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x';
-const STAKE_VAULT_ADDRESS = process.env.NEXT_PUBLIC_STAKE_VAULT_ADDRESS || '0x';
+// Contract addresses from environment
+const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d') as Address;
+const STAKE_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_STAKE_VAULT_ADDRESS || '0x...') as Address;
 
 interface Props {
   address: string;
@@ -33,8 +62,8 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   const [error, setError] = useState<string>('');
 
   // Read required stake amount
-  const { data: requiredStake } = useContractRead({
-    address: STAKE_VAULT_ADDRESS as `0x${string}`,
+  const { data: requiredStake } = useReadContract({
+    address: STAKE_VAULT_ADDRESS,
     abi: STAKE_VAULT_ABI,
     functionName: 'requiredStake',
   });
@@ -42,42 +71,43 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   const stakeAmount = requiredStake || parseUnits('150', 6); // Default 150 USDC
 
   // Check USDC allowance
-  const { data: allowance } = useContractRead({
-    address: USDC_ADDRESS as `0x${string}`,
+  const { data: allowance } = useReadContract({
+    address: USDC_ADDRESS,
     abi: USDC_ABI,
     functionName: 'allowance',
-    args: [address, STAKE_VAULT_ADDRESS],
+    args: [address as Address, STAKE_VAULT_ADDRESS],
   });
 
   // USDC approve
-  const { write: approveUSDC, data: approveData } = useContractWrite({
-    address: USDC_ADDRESS as `0x${string}`,
-    abi: USDC_ABI,
-    functionName: 'approve',
-    args: [STAKE_VAULT_ADDRESS, stakeAmount],
-  });
+  const {
+    data: approveHash,
+    writeContract: approveUSDC,
+    isPending: isApprovePending,
+  } = useWriteContract();
 
-  const { isLoading: isApproving } = useWaitForTransaction({
-    hash: approveData?.hash,
-    onSuccess: () => {
-      setStep('stake');
-    },
+  const { isLoading: isApproving, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
+    hash: approveHash,
   });
 
   // Stake
-  const { write: stakeTokens, data: stakeData } = useContractWrite({
-    address: STAKE_VAULT_ADDRESS as `0x${string}`,
-    abi: STAKE_VAULT_ABI,
-    functionName: 'stake',
-    args: [stakeAmount],
+  const {
+    data: stakeHash,
+    writeContract: stakeTokens,
+    isPending: isStakePending,
+  } = useWriteContract();
+
+  const { isLoading: isStaking, isSuccess: isStakeSuccess } = useWaitForTransactionReceipt({
+    hash: stakeHash,
   });
 
-  const { isLoading: isStaking } = useWaitForTransaction({
-    hash: stakeData?.hash,
-    onSuccess: () => {
-      setStep('submit');
-    },
-  });
+  // Auto-advance to next step after successful transactions
+  if (isApproveSuccess && step === 'approve') {
+    setStep('stake');
+  }
+
+  if (isStakeSuccess && step === 'stake') {
+    setStep('submit');
+  }
 
   // Sign message for backend
   const { signMessage } = useSignMessage({
@@ -137,12 +167,22 @@ Timestamp: ${timestamp}`;
 
   const handleApprove = () => {
     setError('');
-    approveUSDC?.();
+    approveUSDC({
+      address: USDC_ADDRESS,
+      abi: USDC_ABI,
+      functionName: 'approve',
+      args: [STAKE_VAULT_ADDRESS, stakeAmount],
+    });
   };
 
   const handleStake = () => {
     setError('');
-    stakeTokens?.();
+    stakeTokens({
+      address: STAKE_VAULT_ADDRESS,
+      abi: STAKE_VAULT_ABI,
+      functionName: 'stake',
+      args: [stakeAmount],
+    });
   };
 
   const handleSubmit = () => {
@@ -198,10 +238,10 @@ Timestamp: ${timestamp}`;
           {step === 'approve' && !isAllowanceSufficient && (
             <button
               onClick={handleApprove}
-              disabled={isApproving || !approveUSDC}
+              disabled={isApprovePending || isApproving}
               className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isApproving ? 'Approving...' : 'Approve USDC'}
+              {isApprovePending || isApproving ? 'Approving...' : 'Approve USDC'}
             </button>
           )}
         </div>
@@ -222,10 +262,10 @@ Timestamp: ${timestamp}`;
           {step === 'stake' && (
             <button
               onClick={handleStake}
-              disabled={isStaking || !stakeTokens}
+              disabled={isStakePending || isStaking}
               className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isStaking ? 'Staking...' : 'Stake USDC'}
+              {isStakePending || isStaking ? 'Staking...' : 'Stake USDC'}
             </button>
           )}
         </div>
@@ -264,7 +304,7 @@ Timestamp: ${timestamp}`;
       <button
         onClick={onBack}
         className="w-full py-3 bg-white/10 rounded-lg text-white font-semibold hover:bg-white/20"
-        disabled={isProcessing || isApproving || isStaking}
+        disabled={isProcessing || isApprovePending || isApproving || isStakePending || isStaking}
       >
         ← Back to Form
       </button>
