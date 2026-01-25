@@ -7,6 +7,7 @@ import developersRouter from './api/routes/developers';
 import projectsRouter, { initialize as initializeProjects } from './api/routes/projects';
 import milestonesRouter, { initialize as initializeMilestones } from './api/routes/milestones';
 import clientsRouter, { initialize as initializeClients } from './api/routes/clients';
+import escrowRouter, { initialize as initializeEscrow } from './api/routes/escrow';
 import { databaseConfig } from './config/database';
 
 dotenv.config();
@@ -20,9 +21,14 @@ const db = new Pool(databaseConfig);
 // Initialize blockchain connection and contract
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 const projectManagerAddress = process.env.PROJECT_MANAGER_ADDRESS;
+const escrowVaultAddress = process.env.ESCROW_VAULT_ADDRESS;
 
 if (!projectManagerAddress) {
   throw new Error('PROJECT_MANAGER_ADDRESS not configured in .env');
+}
+
+if (!escrowVaultAddress) {
+  throw new Error('ESCROW_VAULT_ADDRESS not configured in .env');
 }
 
 // ProjectManager contract ABI (minimal - just what we need)
@@ -36,14 +42,27 @@ const projectManagerAbi = [
   'event ProjectStateChanged(uint256 indexed projectId, uint8 oldState, uint8 newState)',
 ];
 
-// Create contract instance with signer
+// EscrowVault contract ABI (minimal - just what we need for routes)
+const escrowVaultAbi = [
+  'function deposit(uint256 projectId, uint256 amount) external returns (bool)',
+  'function release(uint256 projectId, address developer, uint256 amount) external returns (bool)',
+  'function releaseFee(uint256 projectId, uint256 feeAmount) external returns (bool)',
+  'function freeze(uint256 projectId) external returns (bool)',
+  'function unfreeze(uint256 projectId) external returns (bool)',
+  'function getEscrowInfo(uint256 projectId) external view returns (tuple(uint256 projectId, address client, uint256 totalAmount, uint256 releasedAmount, bool disputed))',
+  'function getAvailableBalance(uint256 projectId) external view returns (uint256)',
+];
+
+// Create contract instances with signer
 const wallet = new ethers.Wallet(process.env.PRIVATE_KEY || '', provider);
 const projectManagerContract = new ethers.Contract(projectManagerAddress, projectManagerAbi, wallet);
+const escrowVaultContract = new ethers.Contract(escrowVaultAddress, escrowVaultAbi, wallet);
 
 // Initialize routes with dependencies
 initializeProjects(db, projectManagerContract);
 initializeMilestones(db, projectManagerContract);
 initializeClients(db);
+initializeEscrow(db, escrowVaultContract);
 
 // Middleware
 app.use(cors({
@@ -69,6 +88,7 @@ app.use('/api/developers', developersRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/milestones', milestonesRouter);
 app.use('/api/clients', clientsRouter);
+app.use('/api/escrow', escrowRouter);
 
 // 404 handler
 app.use((req, res) => {
