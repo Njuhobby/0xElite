@@ -61,6 +61,9 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
 
+  // Check if contract addresses are configured
+  const isConfigured = STAKE_VAULT_ADDRESS !== '0x...' && !STAKE_VAULT_ADDRESS.includes('...');
+
   // Read required stake amount
   const { data: requiredStake } = useReadContract({
     address: STAKE_VAULT_ADDRESS,
@@ -83,6 +86,7 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
     data: approveHash,
     writeContract: approveUSDC,
     isPending: isApprovePending,
+    error: approveError,
   } = useWriteContract();
 
   const { isLoading: isApproving, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
@@ -94,6 +98,7 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
     data: stakeHash,
     writeContract: stakeTokens,
     isPending: isStakePending,
+    error: stakeError,
   } = useWriteContract();
 
   const { isLoading: isStaking, isSuccess: isStakeSuccess } = useWaitForTransactionReceipt({
@@ -101,13 +106,30 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   });
 
   // Auto-advance to next step after successful transactions
-  if (isApproveSuccess && step === 'approve') {
-    setStep('stake');
-  }
+  useEffect(() => {
+    if (isApproveSuccess && step === 'approve') {
+      setStep('stake');
+    }
+  }, [isApproveSuccess, step]);
 
-  if (isStakeSuccess && step === 'stake') {
-    setStep('submit');
-  }
+  useEffect(() => {
+    if (isStakeSuccess && step === 'stake') {
+      setStep('submit');
+    }
+  }, [isStakeSuccess, step]);
+
+  // Display errors
+  useEffect(() => {
+    if (approveError) {
+      setError(approveError.message || 'Failed to approve USDC');
+    }
+  }, [approveError]);
+
+  useEffect(() => {
+    if (stakeError) {
+      setError(stakeError.message || 'Failed to stake USDC');
+    }
+  }, [stakeError]);
 
   // Sign message for backend
   const { signMessage } = useSignMessage({
@@ -197,6 +219,19 @@ Timestamp: ${timestamp}`;
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-white mb-6">Stake USDC to Activate Account</h2>
 
+      {/* Configuration Error */}
+      {!isConfigured && (
+        <div className="p-4 bg-yellow-500/10 border border-yellow-500 rounded-lg">
+          <p className="text-yellow-400 text-sm font-semibold mb-2">⚠️ Contract Not Configured</p>
+          <p className="text-yellow-300 text-xs">
+            STAKE_VAULT_ADDRESS is not configured. Please set NEXT_PUBLIC_STAKE_VAULT_ADDRESS in your .env.local file.
+          </p>
+          <p className="text-yellow-300 text-xs mt-1">
+            Current value: {STAKE_VAULT_ADDRESS}
+          </p>
+        </div>
+      )}
+
       {/* Stake Amount Display */}
       <div className="bg-purple-600/20 border border-purple-500/30 rounded-xl p-6">
         <div className="flex items-center justify-between">
@@ -238,7 +273,7 @@ Timestamp: ${timestamp}`;
           {step === 'approve' && !isAllowanceSufficient && (
             <button
               onClick={handleApprove}
-              disabled={isApprovePending || isApproving}
+              disabled={!isConfigured || isApprovePending || isApproving}
               className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isApprovePending || isApproving ? 'Approving...' : 'Approve USDC'}
@@ -262,7 +297,7 @@ Timestamp: ${timestamp}`;
           {step === 'stake' && (
             <button
               onClick={handleStake}
-              disabled={isStakePending || isStaking}
+              disabled={!isConfigured || isStakePending || isStaking}
               className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isStakePending || isStaking ? 'Staking...' : 'Stake USDC'}
