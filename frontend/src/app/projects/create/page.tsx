@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useRouter } from 'next/navigation';
+import { parseUnits, Address } from 'viem';
 import MilestoneManager from '@/components/project/MilestoneManager';
 
 interface Milestone {
@@ -17,6 +18,40 @@ const AVAILABLE_SKILLS = [
   'Go', 'Python', 'DeFi', 'NFT', 'ZK-Proofs', 'Smart Contracts', 'Web3.js',
   'Ethers.js', 'Hardhat', 'Foundry', 'Subgraph', 'IPFS', 'Backend', 'Frontend'
 ];
+
+// Contract addresses (should come from env variables)
+const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d') as Address;
+const ESCROW_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_VAULT_ADDRESS || '0x...') as Address;
+
+// Minimal USDC ERC20 ABI (approve function)
+const USDC_ABI = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+// Minimal EscrowVault ABI (deposit function)
+const ESCROW_VAULT_ABI = [
+  {
+    name: 'deposit',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+type DepositStep = 'form' | 'approving' | 'depositing' | 'recording' | 'completed';
 
 export default function CreateProjectPage() {
   const { address, isConnected } = useAccount();
@@ -41,6 +76,8 @@ export default function CreateProjectPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [depositStep, setDepositStep] = useState<DepositStep>('form');
+  const [createdProject, setCreatedProject] = useState<{ id: string; contractProjectId: string } | null>(null);
 
   const { signMessage } = useSignMessage({
     onSuccess: async (signature) => {
@@ -50,6 +87,30 @@ export default function CreateProjectPage() {
       setError(error.message);
       setIsSubmitting(false);
     },
+  });
+
+  // USDC approval transaction
+  const {
+    data: approveHash,
+    writeContract: approveUsdc,
+    isPending: isApproving,
+    error: approveError,
+  } = useWriteContract();
+
+  const { isLoading: isApproveTxPending } = useWaitForTransactionReceipt({
+    hash: approveHash,
+  });
+
+  // Escrow deposit transaction
+  const {
+    data: depositHash,
+    writeContract: depositEscrow,
+    isPending: isDepositing,
+    error: depositError,
+  } = useWriteContract();
+
+  const { isLoading: isDepositTxPending, isSuccess: isDepositSuccess } = useWaitForTransactionReceipt({
+    hash: depositHash,
   });
 
   const toggleSkill = (skill: string) => {
@@ -141,13 +202,122 @@ Timestamp: ${timestamp}`;
 
       const data = await response.json();
 
-      // Redirect to project page
-      router.push(`/projects/${data.id}`);
+      // Store created project and move to deposit flow
+      setCreatedProject({
+        id: data.id,
+        contractProjectId: data.contractProjectId,
+      });
+      setDepositStep('approving');
+      setIsSubmitting(false);
     } catch (err: any) {
       setError(err.message);
       setIsSubmitting(false);
     }
   };
+
+  const handleApproveUsdc = async () => {
+    if (!createdProject) return;
+
+    try {
+      setError('');
+      const amountUsdc = parseUnits(formData.totalBudget, 6); // USDC has 6 decimals
+
+      approveUsdc({
+        address: USDC_ADDRESS,
+        abi: USDC_ABI,
+        functionName: 'approve',
+        args: [ESCROW_VAULT_ADDRESS, amountUsdc],
+      });
+    } catch (err: any) {
+      setError(err.message);
+      setDepositStep('form');
+    }
+  };
+
+  const handleDepositEscrow = async () => {
+    if (!createdProject) return;
+
+    try {
+      setError('');
+      setDepositStep('depositing');
+      const amountUsdc = parseUnits(formData.totalBudget, 6);
+
+      depositEscrow({
+        address: ESCROW_VAULT_ADDRESS,
+        abi: ESCROW_VAULT_ABI,
+        functionName: 'deposit',
+        args: [BigInt(createdProject.contractProjectId), amountUsdc],
+      });
+    } catch (err: any) {
+      setError(err.message);
+      setDepositStep('approving');
+    }
+  };
+
+  const recordDepositInBackend = async (txHash: string) => {
+    if (!createdProject) return;
+
+    try {
+      setError('');
+      setDepositStep('recording');
+
+      const message = `Record escrow deposit for project ${createdProject.id}\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
+
+      signMessage(
+        { message },
+        {
+          onSuccess: async (signature) => {
+            const response = await fetch(
+              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/escrow/deposit`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  address,
+                  message,
+                  signature,
+                  projectId: createdProject.id,
+                  amount: parseFloat(formData.totalBudget),
+                  txHash,
+                }),
+              }
+            );
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.message || 'Failed to record deposit');
+            }
+
+            setDepositStep('completed');
+
+            // Redirect after a short delay
+            setTimeout(() => {
+              router.push(`/projects/${createdProject.id}`);
+            }, 2000);
+          },
+          onError: (error) => {
+            setError(error.message);
+            setDepositStep('depositing');
+          },
+        }
+      );
+    } catch (err: any) {
+      setError(err.message);
+      setDepositStep('depositing');
+    }
+  };
+
+  // Effect to handle approval confirmation
+  if (approveHash && !isApproveTxPending && depositStep === 'approving') {
+    handleDepositEscrow();
+  }
+
+  // Effect to handle deposit confirmation
+  if (depositHash && isDepositSuccess && depositStep === 'depositing') {
+    recordDepositInBackend(depositHash);
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,6 +339,122 @@ Timestamp: ${timestamp}`;
         <div className="text-center">
           <h1 className="text-3xl font-bold text-white mb-4">Connect Wallet</h1>
           <p className="text-gray-400">Please connect your wallet to create a project</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show deposit flow if project created
+  if (depositStep !== 'form' && createdProject) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0A0A1B] via-[#1a0a2e] to-[#0A0A1B] py-12 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-8">
+            <h1 className="text-3xl font-bold text-white mb-6 text-center">Deposit Escrow</h1>
+            <p className="text-gray-400 text-center mb-8">
+              Deposit {formData.totalBudget} USDC to escrow to activate your project
+            </p>
+
+            {/* Progress Steps */}
+            <div className="space-y-4 mb-8">
+              {/* Step 1: Approve */}
+              <div className={`flex items-center p-4 rounded-xl ${
+                depositStep === 'approving' ? 'bg-purple-600/20 border border-purple-500' :
+                depositStep === 'depositing' || depositStep === 'recording' || depositStep === 'completed' ?
+                'bg-green-600/20 border border-green-500' :
+                'bg-white/5 border border-white/10'
+              }`}>
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
+                  {depositStep === 'depositing' || depositStep === 'recording' || depositStep === 'completed' ? '✓' : '1'}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-white font-semibold">Approve USDC</h3>
+                  <p className="text-gray-400 text-sm">Allow EscrowVault to spend your USDC</p>
+                </div>
+                {depositStep === 'approving' && (isApproving || isApproveTxPending) && (
+                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+                )}
+              </div>
+
+              {/* Step 2: Deposit */}
+              <div className={`flex items-center p-4 rounded-xl ${
+                depositStep === 'depositing' ? 'bg-purple-600/20 border border-purple-500' :
+                depositStep === 'recording' || depositStep === 'completed' ?
+                'bg-green-600/20 border border-green-500' :
+                'bg-white/5 border border-white/10'
+              }`}>
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
+                  {depositStep === 'recording' || depositStep === 'completed' ? '✓' : '2'}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-white font-semibold">Deposit to Escrow</h3>
+                  <p className="text-gray-400 text-sm">Transfer USDC to escrow vault</p>
+                </div>
+                {depositStep === 'depositing' && (isDepositing || isDepositTxPending) && (
+                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+                )}
+              </div>
+
+              {/* Step 3: Confirm */}
+              <div className={`flex items-center p-4 rounded-xl ${
+                depositStep === 'recording' ? 'bg-purple-600/20 border border-purple-500' :
+                depositStep === 'completed' ?
+                'bg-green-600/20 border border-green-500' :
+                'bg-white/5 border border-white/10'
+              }`}>
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
+                  {depositStep === 'completed' ? '✓' : '3'}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-white font-semibold">Activate Project</h3>
+                  <p className="text-gray-400 text-sm">Record deposit and activate project</p>
+                </div>
+                {depositStep === 'recording' && (
+                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+                )}
+              </div>
+            </div>
+
+            {/* Success Message */}
+            {depositStep === 'completed' && (
+              <div className="bg-green-500/10 border border-green-500 rounded-xl p-4 mb-4">
+                <p className="text-green-400 text-center font-semibold">
+                  ✓ Escrow deposited successfully! Redirecting to your project...
+                </p>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500 rounded-xl p-4 mb-4">
+                <p className="text-red-400 text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Action Button */}
+            {depositStep === 'approving' && !isApproving && !isApproveTxPending && (
+              <button
+                onClick={handleApproveUsdc}
+                className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl text-white font-bold text-lg hover:shadow-lg transition-all"
+              >
+                Approve USDC
+              </button>
+            )}
+
+            {(approveError || depositError) && (
+              <div className="text-center mt-4">
+                <button
+                  onClick={() => {
+                    setError('');
+                    setDepositStep('approving');
+                  }}
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
