@@ -13,28 +13,43 @@ export default function Home() {
   useEffect(() => {
     if (!isConnected || !address || checkingDeveloper) return;
 
-    const checkDeveloperStatus = async () => {
+    const checkUserStatus = async () => {
       setCheckingDeveloper(true);
       try {
-        const response = await fetch(
+        // Check developer status first (developer dashboard takes priority for dual-role)
+        const devResponse = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`
         );
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === 'active') {
-            // Redirect active developers to dashboard
+        if (devResponse.ok) {
+          const devData = await devResponse.json();
+          if (devData.status === 'active') {
             router.push('/dashboard/developer');
+            return;
           }
         }
-      } catch (error) {
-        // Not a developer or error fetching - stay on home page
+
+        // If not an active developer, check client status
+        const clientResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/clients/${address}`,
+          { headers: { 'x-wallet-address': address } }
+        );
+
+        if (clientResponse.ok) {
+          const clientData = await clientResponse.json();
+          if (clientData.isRegistered) {
+            router.push('/dashboard/client');
+            return;
+          }
+        }
+      } catch {
+        // Not a developer or client - stay on home page
       } finally {
         setCheckingDeveloper(false);
       }
     };
 
-    checkDeveloperStatus();
+    checkUserStatus();
   }, [address, isConnected, router, checkingDeveloper]);
   return (
     <div className="min-h-screen bg-[#FAFAFA] bg-lines">

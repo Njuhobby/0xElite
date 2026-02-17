@@ -154,6 +154,15 @@ export default function DeveloperDashboardLayout({
 
             <div className="border-t border-white/20 my-4"></div>
 
+            {/* Client Dashboard Link */}
+            <Link
+              href="/dashboard/client"
+              className="flex items-center gap-3 px-4 py-3 rounded-lg mb-2 text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+            >
+              <span className="text-xl">💼</span>
+              <span className="font-medium">Client Dashboard</span>
+            </Link>
+
             {/* Main Site Link */}
             <Link
               href="/"
