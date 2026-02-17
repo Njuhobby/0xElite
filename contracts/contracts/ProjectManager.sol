@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /**
  * @title ProjectManager
  * @notice Manages on-chain project registration and state tracking for 0xElite platform
- * @dev Stores minimal project data on-chain for ownership and dispute resolution
+ * @dev UUPS Upgradeable - stores minimal project data on-chain for ownership and dispute resolution
  */
-contract ProjectManager is Ownable, ReentrancyGuard {
+contract ProjectManager is
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     /// @notice Project states
     enum ProjectState {
         Draft,      // Project created, no developer assigned
@@ -65,7 +72,31 @@ contract ProjectManager is Ownable, ReentrancyGuard {
         ProjectState newState
     );
 
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @notice Initialize the contract (replaces constructor)
+     * @param initialOwner Address of the initial owner
+     */
+    function initialize(address initialOwner) public initializer {
+        require(initialOwner != address(0), "Invalid owner address");
+
+        __Ownable_init(initialOwner);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
+        nextProjectId = 0;
+    }
+
+    /**
+     * @notice Authorize upgrade to new implementation
+     * @param newImplementation Address of new implementation contract
+     * @dev Only owner can upgrade
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     /// @notice Create a new project on-chain
     /// @param _totalBudget Total project budget in USDC base units (6 decimals)
@@ -157,5 +188,13 @@ contract ProjectManager is Ownable, ReentrancyGuard {
     /// @return Total project count
     function getProjectCount() external view returns (uint256) {
         return nextProjectId;
+    }
+
+    /**
+     * @notice Get the current implementation version
+     * @return Version string
+     */
+    function version() external pure returns (string memory) {
+        return "1.0.0";
     }
 }

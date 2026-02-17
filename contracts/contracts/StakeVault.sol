@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title StakeVault
  * @notice Manages USDC stake deposits for developer membership on 0xElite platform
- * @dev Implements staking mechanism with minimum stake requirements and event emission
+ * @dev UUPS Upgradeable - implements staking mechanism with minimum stake requirements
  */
-contract StakeVault is Ownable, ReentrancyGuard {
-    /// @notice USDC token contract
-    IERC20 public immutable stakeToken;
+contract StakeVault is
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
+    /// @notice USDC token contract (not immutable in upgradeable contracts)
+    IERC20 public stakeToken;
 
     /// @notice Required minimum stake amount in USDC (6 decimals)
     uint256 public requiredStake;
@@ -38,15 +45,34 @@ contract StakeVault is Ownable, ReentrancyGuard {
     /// @param newAmount New required stake
     event RequiredStakeUpdated(uint256 oldAmount, uint256 newAmount);
 
-    /// @param _stakeToken Address of USDC token contract
-    /// @param _requiredStake Initial required stake amount (e.g., 150 * 10^6 for 150 USDC)
-    constructor(address _stakeToken, uint256 _requiredStake) Ownable(msg.sender) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @notice Initialize the contract (replaces constructor)
+     * @param _stakeToken Address of USDC token contract
+     * @param _requiredStake Initial required stake amount (e.g., 150 * 10^6 for 150 USDC)
+     */
+    function initialize(address _stakeToken, uint256 _requiredStake) public initializer {
         require(_stakeToken != address(0), "Invalid token address");
         require(_requiredStake > 0, "Required stake must be positive");
+
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
 
         stakeToken = IERC20(_stakeToken);
         requiredStake = _requiredStake;
     }
+
+    /**
+     * @notice Authorize upgrade to new implementation
+     * @param newImplementation Address of new implementation contract
+     * @dev Only owner can upgrade
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     /// @notice Stake USDC to become a developer member
     /// @param amount Amount of USDC to stake (first stake must be >= requiredStake)
@@ -93,5 +119,13 @@ contract StakeVault is Ownable, ReentrancyGuard {
         requiredStake = newAmount;
 
         emit RequiredStakeUpdated(oldAmount, newAmount);
+    }
+
+    /**
+     * @notice Get the current implementation version
+     * @return Version string
+     */
+    function version() external pure returns (string memory) {
+        return "1.0.0";
     }
 }

@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title EscrowVault
  * @notice Manages USDC escrow for milestone-based project payments
- * @dev Holds client funds in escrow and releases payments upon milestone completion
+ * @dev UUPS Upgradeable - holds client funds in escrow and releases payments upon milestone completion
  */
-contract EscrowVault is Ownable, ReentrancyGuard {
+contract EscrowVault is
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
 
     struct EscrowInfo {
@@ -22,8 +29,8 @@ contract EscrowVault is Ownable, ReentrancyGuard {
         bool disputed;
     }
 
-    // State variables
-    IERC20 public immutable usdcToken;
+    // State variables (not immutable in upgradeable contracts)
+    IERC20 public usdcToken;
     address public projectManager;
     address public disputeDAO;
     address public treasury;
@@ -106,21 +113,38 @@ contract EscrowVault is Ownable, ReentrancyGuard {
         _;
     }
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /**
-     * @notice Constructor
+     * @notice Initialize the contract (replaces constructor)
      * @param _usdcToken USDC token contract address
      * @param _treasury Treasury address for platform fees
      */
-    constructor(
+    function initialize(
         address _usdcToken,
         address _treasury
-    ) Ownable(msg.sender) {
+    ) public initializer {
         if (_usdcToken == address(0) || _treasury == address(0)) {
             revert InvalidAddress();
         }
+
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
         usdcToken = IERC20(_usdcToken);
         treasury = _treasury;
     }
+
+    /**
+     * @notice Authorize upgrade to new implementation
+     * @param newImplementation Address of new implementation contract
+     * @dev Only owner can upgrade
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     /**
      * @notice Deposit funds into escrow for a project
@@ -390,5 +414,13 @@ contract EscrowVault is Ownable, ReentrancyGuard {
         address oldTreasury = treasury;
         treasury = _treasury;
         emit TreasuryUpdated(oldTreasury, _treasury);
+    }
+
+    /**
+     * @notice Get the current implementation version
+     * @return Version string
+     */
+    function version() external pure returns (string memory) {
+        return "1.0.0";
     }
 }
