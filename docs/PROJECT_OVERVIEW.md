@@ -731,4 +731,4 @@ ESCROW_VAULT_ADDRESS=0x...
 
 ---
 
-*Last updated: 2024*
+*Last updated: February 2026*
