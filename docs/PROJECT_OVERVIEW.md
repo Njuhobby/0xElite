@@ -456,11 +456,12 @@
 │                               └───────────────┘                            │
 │                                                                             │
 │   ┌───────────────┐                                                        │
-│   │   reviews     │  (Spec 5 - 待实现)                                      │
+│   │   reviews     │  (Spec 5 - 已实现)                                      │
 │   ├───────────────┤                                                        │
 │   │ project_id    │                                                        │
 │   │ reviewer_addr │                                                        │
 │   │ reviewee_addr │                                                        │
+│   │ reviewer_type │  (client / developer)                                  │
 │   │ rating (1-5)  │                                                        │
 │   │ comment       │                                                        │
 │   └───────────────┘                                                        │
@@ -558,16 +559,28 @@
 │   GET    /project/:id           获取项目 escrow 状态                         │
 │   GET    /project/:id/history   获取支付历史                                 │
 │                                                                             │
+│   Clients API (/api/clients)                                                │
+│   ─────────────────────────                                                 │
+│   POST   /                      注册/更新客户资料                             │
+│   GET    /:address              获取客户详情                                 │
+│                                                                             │
+│   Milestones API (/api/milestones)                                          │
+│   ────────────────────────────────                                          │
+│   POST   /:projectId/milestones 添加里程碑                                   │
+│   PUT    /:id                   更新里程碑状态 (approve/reject/submit)        │
+│                                                                             │
 │   Matching API (/api/matching)                                              │
 │   ──────────────────────────                                                │
 │   POST   /find                  为项目寻找匹配的开发者                        │
 │   POST   /assign                分配开发者到项目                             │
 │                                                                             │
-│   Reviews API (/api/reviews) - Spec 5 待实现                                │
-│   ─────────────────────────────────────────                                 │
+│   Reviews API (/api/reviews)                                                │
+│   ──────────────────────────                                                │
 │   POST   /                      提交评价                                     │
 │   GET    /developer/:address    获取开发者评价                               │
+│   GET    /client/:address       获取客户评价                                 │
 │   GET    /project/:id           获取项目评价                                 │
+│   PUT    /:id                   编辑评价 (7天内)                              │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -590,12 +603,12 @@
 │   • Developer dashboard                                                     │
 │                                                                             │
 │   Spec 2: Project Submission & Matching                                     │
-│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  80% 🔶      │
-│   [████████████████████████████████████████░░░░░░░░░░]                      │
+│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% ✅      │
+│   [██████████████████████████████████████████████████]                      │
 │   • Project creation API ✅                                                 │
 │   • Matching algorithm ✅                                                   │
-│   • Project listing UI ⚠️ (basic)                                           │
-│   • Client dashboard ❌ (not started)                                       │
+│   • Project listing UI ✅                                                   │
+│   • Client dashboard ✅                                                     │
 │                                                                             │
 │   Spec 3: Escrow System                                                     │
 │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% ✅      │
@@ -613,14 +626,27 @@
 │   • Resolution execution                                                    │
 │                                                                             │
 │   Spec 5: Reviews & Ratings                                                 │
-│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   5% 📋      │
-│   [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]                      │
-│   • Change proposal created ✅                                              │
-│   • Awaiting approval to implement                                          │
+│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% ✅      │
+│   [██████████████████████████████████████████████████]                      │
+│   • Reviews database migration ✅                                           │
+│   • Reviews API (CRUD + pagination) ✅                                      │
+│   • Frontend components (RatingStars, ReviewCard, ReviewList) ✅            │
+│   • SubmitReviewModal ✅                                                    │
+│   • Rating auto-recalculation triggers ✅                                   │
+│                                                                             │
+│   Spec 6: Client Dashboard                                                  │
+│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% ✅      │
+│   [██████████████████████████████████████████████████]                      │
+│   • Client dashboard layout with sidebar ✅                                 │
+│   • Client profile page with registration flow ✅                           │
+│   • Project management (list, create, filter) ✅                            │
+│   • Project detail (milestones, escrow, approve/reject) ✅                  │
+│   • Client settings page ✅                                                 │
+│   • Auto-redirect for registered clients ✅                                 │
 │                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│   Overall Progress:  ~60%                                                   │
-│   [████████████████████████████████░░░░░░░░░░░░░░░░░░]                      │
+│   Overall Progress:  ~80%                                                   │
+│   [████████████████████████████████████████░░░░░░░░░░]                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -685,24 +711,53 @@ ESCROW_VAULT_ADDRESS=0x...
 0xElite/
 ├── frontend/
 │   ├── src/app/
-│   │   ├── page.tsx                    # Landing page
+│   │   ├── page.tsx                    # Landing page (auto-redirect)
 │   │   ├── apply/page.tsx              # Developer application
-│   │   └── dashboard/developer/        # Developer dashboard
+│   │   ├── dashboard/developer/        # Developer dashboard
+│   │   │   ├── layout.tsx              #   Sidebar + access control
+│   │   │   ├── page.tsx                #   Profile view
+│   │   │   ├── projects/page.tsx       #   Projects list
+│   │   │   └── settings/page.tsx       #   Settings
+│   │   └── dashboard/client/           # Client dashboard
+│   │       ├── layout.tsx              #   Sidebar + client status check
+│   │       ├── page.tsx                #   Profile + registration
+│   │       ├── projects/page.tsx       #   Projects list + create
+│   │       ├── projects/[id]/page.tsx  #   Project detail + milestones
+│   │       └── settings/page.tsx       #   Settings
 │   └── src/components/
 │       ├── ConnectWallet.tsx
-│       └── developer/
-│           ├── StakeFlow.tsx
-│           └── EditProfileModal.tsx
+│       ├── developer/
+│       │   ├── StakeFlow.tsx
+│       │   └── EditProfileModal.tsx
+│       ├── client/
+│       │   ├── EditClientProfileModal.tsx
+│       │   └── CreateProjectModal.tsx
+│       └── reviews/
+│           ├── RatingStars.tsx
+│           ├── ReviewCard.tsx
+│           ├── ReviewList.tsx
+│           └── SubmitReviewModal.tsx
 │
 ├── backend/
 │   ├── src/api/routes/
 │   │   ├── developers.ts
+│   │   ├── clients.ts
 │   │   ├── projects.ts
-│   │   └── escrow.ts
+│   │   ├── milestones.ts
+│   │   ├── escrow.ts
+│   │   └── reviews.ts
 │   ├── src/services/
 │   │   ├── matchingAlgorithm.ts
 │   │   └── escrowEventListener.ts
-│   └── src/types/
+│   ├── src/types/
+│   │   ├── developer.ts
+│   │   ├── client.ts
+│   │   └── review.ts
+│   └── src/db/migrations/
+│       ├── 001_create_developers_table.sql
+│       ├── 002_create_project_tables.sql
+│       ├── 003_create_escrow_tables.sql
+│       └── 004_create_reviews_table.sql
 │
 ├── contracts/
 │   ├── StakeVault.sol
@@ -710,25 +765,37 @@ ESCROW_VAULT_ADDRESS=0x...
 │   └── ProjectManager.sol
 │
 └── specs/
-    ├── 1-developer-registration.md
-    ├── 2-project-matching.md
-    ├── 3-escrow-system.md
-    ├── 4-dao-arbitration.md
-    ├── 5-reviews-ratings.md
-    └── changes/
-        └── add-reviews-ratings/        # Spec 5 change proposal
+    ├── capabilities/
+    │   ├── developer-onboarding/
+    │   ├── project-management/
+    │   ├── escrow-management/
+    │   ├── review-management/
+    │   └── client-dashboard/
+    ├── api/
+    │   ├── developer-management/
+    │   ├── project-management/
+    │   ├── escrow-management/
+    │   ├── review-management/
+    │   └── client-management/
+    ├── architecture/
+    │   ├── stake-vault-contract/
+    │   ├── escrow-vault-contract/
+    │   ├── escrow-event-listener/
+    │   ├── project-manager-contract/
+    │   └── matching-algorithm/
+    └── changes/archive/                # Archived change proposals
 ```
 
 ---
 
 ## Next Steps
 
-1. **Deploy Contracts** - 部署 StakeVault 和 EscrowVault 到测试网
+1. **Deploy Contracts** - 部署 StakeVault, EscrowVault, ProjectManager 到测试网
 2. **Configure Addresses** - 在 .env 中配置合约地址
-3. **Review Spec 5** - 审批 Reviews & Ratings 变更提案
-4. **Implement Spec 4** - DAO Arbitration 系统
-5. **Client Dashboard** - 完善客户端 UI
+3. **Implement Spec 4** - DAO Arbitration 系统 (争议创建, DAO投票, 裁决执行)
+4. **E2E Testing** - 端到端测试完整项目生命周期
+5. **Gas Optimization** - 合约 gas 优化和安全审计
 
 ---
 
-*Last updated: February 2026*
+*Last updated: February 17, 2026*
