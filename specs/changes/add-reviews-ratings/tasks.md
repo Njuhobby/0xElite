@@ -2,46 +2,46 @@
 
 ## 1. Database Schema
 
-- [ ] 1.1 Design reviews table schema (reviewer, reviewee, project, rating, comment, etc.)
-- [ ] 1.2 Add rating fields to developers table (average_rating, total_reviews, rating_distribution)
-- [ ] 1.3 Add rating fields to clients table (average_rating, total_reviews, rating_distribution)
-- [ ] 1.4 Write migration script: `004_create_reviews_table.sql`
-- [ ] 1.5 Add uniqueness constraint (one review per project per side)
-- [ ] 1.6 Add triggers for automatic rating recalculation
+- [x] 1.1 Design reviews table schema (reviewer, reviewee, project, rating, comment, etc.)
+- [x] 1.2 Add rating fields to developers table (average_rating, total_reviews, rating_distribution)
+- [x] 1.3 Add rating fields to clients table (average_rating, total_reviews, rating_distribution)
+- [x] 1.4 Write migration script: `004_create_reviews_table.sql`
+- [x] 1.5 Add uniqueness constraint (one review per project per side)
+- [x] 1.6 Add triggers for automatic rating recalculation
 - [ ] 1.7 Test migration script
 
 ## 2. Backend API Implementation
 
-- [ ] 2.1 Create `backend/src/api/routes/reviews.ts`
-- [ ] 2.2 Implement POST /api/reviews (submit review)
-- [ ] 2.3 Implement GET /api/reviews/developer/:address (get developer reviews)
-- [ ] 2.4 Implement GET /api/reviews/client/:address (get client reviews)
-- [ ] 2.5 Implement GET /api/reviews/project/:projectId (get project reviews)
-- [ ] 2.6 Implement PUT /api/reviews/:id (edit review within 7 days)
-- [ ] 2.7 Add validation (project completed, no duplicates, rating 1-5)
-- [ ] 2.8 Add signature verification for review submission
-- [ ] 2.9 Implement rating recalculation logic
-- [ ] 2.10 Update `backend/src/index.ts` to register review routes
+- [x] 2.1 Create `backend/src/api/routes/reviews.ts`
+- [x] 2.2 Implement POST /api/reviews (submit review)
+- [x] 2.3 Implement GET /api/reviews/developer/:address (get developer reviews)
+- [x] 2.4 Implement GET /api/reviews/client/:address (get client reviews)
+- [x] 2.5 Implement GET /api/reviews/project/:projectId (get project reviews)
+- [x] 2.6 Implement PUT /api/reviews/:id (edit review within 7 days)
+- [x] 2.7 Add validation (project completed, no duplicates, rating 1-5)
+- [x] 2.8 Add signature verification for review submission
+- [x] 2.9 Implement rating recalculation logic (via DB triggers)
+- [x] 2.10 Update `backend/src/index.ts` to register review routes
 
 ## 3. Matching Algorithm Integration
 
-- [ ] 3.1 Update `matchingAlgorithm.ts` to query average_rating from developers
-- [ ] 3.2 Modify reputation scoring to use average_rating (0-10 points)
-- [ ] 3.3 Add rating weight configuration (e.g., 5-star = 10 points, 1-star = 0 points)
+- [x] 3.1 Update `matchingAlgorithm.ts` to query average_rating from developers (already implemented)
+- [x] 3.2 Modify reputation scoring to use average_rating (0-10 points) (already implemented)
+- [x] 3.3 Add rating weight configuration (e.g., 5-star = 10 points, 1-star = 0 points) (already implemented)
 - [ ] 3.4 Test matching with different rating scenarios
 
 ## 4. Frontend Components
 
-- [ ] 4.1 Create `RatingStars.tsx` component (display and input modes)
-- [ ] 4.2 Create `ReviewCard.tsx` component (display single review)
-- [ ] 4.3 Create `ReviewList.tsx` component (display review list with pagination)
-- [ ] 4.4 Create `SubmitReviewModal.tsx` component (review submission form)
-- [ ] 4.5 Create `RatingDistribution.tsx` component (5-star breakdown chart)
+- [x] 4.1 Create `RatingStars.tsx` component (display and input modes)
+- [x] 4.2 Create `ReviewCard.tsx` component (display single review)
+- [x] 4.3 Create `ReviewList.tsx` component (display review list with pagination)
+- [x] 4.4 Create `SubmitReviewModal.tsx` component (review submission form)
+- [x] 4.5 Create `RatingDistribution.tsx` component (5-star breakdown chart) (integrated into ReviewList)
 
 ## 5. Frontend Integration
 
 - [ ] 5.1 Add review submission button to project detail page (when project completed)
-- [ ] 5.2 Integrate ReviewList into `/developers/[address]` page
+- [x] 5.2 Integrate ReviewList into `/developers/[address]` page
 - [ ] 5.3 Integrate ReviewList into client profile view
 - [ ] 5.4 Add average rating display to developer profile header
 - [ ] 5.5 Add average rating display to client profile
@@ -61,8 +61,8 @@
 
 ## 7. Edge Cases & Security
 
-- [ ] 7.1 Prevent self-reviews (developer can't review themselves)
-- [ ] 7.2 Validate reviewer is actually part of the project (client or assigned developer)
+- [x] 7.1 Prevent self-reviews (developer can't review themselves) (DB constraint + API check)
+- [x] 7.2 Validate reviewer is actually part of the project (client or assigned developer)
 - [ ] 7.3 Handle deleted reviews (soft delete, maintain rating history)
 - [ ] 7.4 Rate limiting on review submission (prevent spam)
 - [ ] 7.5 Profanity filter for review text (optional)

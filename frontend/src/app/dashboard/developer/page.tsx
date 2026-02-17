@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
 import EditProfileModal from '@/components/developer/EditProfileModal';
+import ReviewList from '@/components/reviews/ReviewList';
 
 interface Developer {
   walletAddress: string;
@@ -192,6 +193,13 @@ export default function DeveloperDashboardPage() {
           <p className="text-2xl font-bold text-white">{new Date(developer.createdAt).toLocaleDateString()}</p>
         </div>
       </div>
+
+      {/* Reviews Section */}
+      {address && (
+        <div className="mt-6">
+          <ReviewList address={address} type="developer" />
+        </div>
+      )}
 
       {/* Edit Modal */}
       {showEditModal && (

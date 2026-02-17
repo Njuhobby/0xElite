@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { useParams } from 'next/navigation';
 import EditProfileModal from '@/components/developer/EditProfileModal';
+import ReviewList from '@/components/reviews/ReviewList';
 
 interface Developer {
   walletAddress: string;
@@ -196,6 +197,11 @@ export default function DeveloperProfilePage() {
             <p className="text-gray-400 text-sm mb-1">Member Since</p>
             <p className="text-2xl font-bold text-white">{new Date(developer.createdAt).toLocaleDateString()}</p>
           </div>
+        </div>
+
+        {/* Reviews Section */}
+        <div className="mt-6">
+          <ReviewList address={profileAddress} type="developer" />
         </div>
       </div>
 
