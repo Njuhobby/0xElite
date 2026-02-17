@@ -85,8 +85,6 @@ export default function ReviewList({ address, type }: ReviewListProps) {
     }
   };
 
-  const maxCount = Math.max(...Object.values(ratingDistribution), 1);
-
   return (
     <div>
       {/* Rating Summary */}

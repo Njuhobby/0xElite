@@ -32,6 +32,7 @@ CREATE INDEX idx_reviews_reviewee ON reviews(reviewee_address);
 CREATE INDEX idx_reviews_reviewer ON reviews(reviewer_address);
 CREATE INDEX idx_reviews_project ON reviews(project_id);
 CREATE INDEX idx_reviews_created_at ON reviews(created_at DESC);
+CREATE INDEX idx_reviews_reviewee_type_created ON reviews(reviewee_address, reviewer_type, created_at DESC);
 
 -- Auto-update timestamp trigger
 CREATE TRIGGER update_reviews_timestamp
@@ -102,7 +103,8 @@ BEGIN
     )
   INTO avg_val, total_val, dist_val
   FROM reviews
-  WHERE reviewee_address = target_address;
+  WHERE reviewee_address = target_address
+    AND reviewer_type = target_type;
 
   -- Update the appropriate table
   IF target_type = 'client' THEN

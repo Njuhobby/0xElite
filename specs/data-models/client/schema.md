@@ -10,37 +10,75 @@ Stores client profile information with hybrid registration support - allowing im
 
 ### Entity: Client
 
-Stores client profile information and registration status.
-
 **Table**: `clients`
+
+**Added Fields**:
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
-| `wallet_address` | VARCHAR(42) | PRIMARY KEY, NOT NULL | Client's wallet address (lowercase) |
-| `email` | VARCHAR(255) | UNIQUE, NULL | Client email address (optional) |
-| `company_name` | VARCHAR(200) | NULL | Company or individual name |
-| `description` | TEXT | NULL | Company description or bio |
-| `website` | VARCHAR(500) | NULL | Company website URL |
-| `is_registered` | BOOLEAN | NOT NULL, DEFAULT FALSE | Whether client completed full profile registration |
-| `projects_created` | INTEGER | NOT NULL, DEFAULT 0 | Total number of projects created |
-| `projects_completed` | INTEGER | NOT NULL, DEFAULT 0 | Number of successfully completed projects |
-| `total_spent` | DECIMAL(20,6) | NOT NULL, DEFAULT 0 | Total USDC spent on completed projects |
-| `reputation_score` | DECIMAL(3,2) | NULL, CHECK (reputation_score >= 0 AND reputation_score <= 5) | Client reputation (0-5 stars) |
-| `created_at` | TIMESTAMP | NOT NULL, DEFAULT NOW() | Account creation time |
-| `updated_at` | TIMESTAMP | NOT NULL, DEFAULT NOW() | Last update time |
+| `average_rating` | DECIMAL(3,2) | NULL, CHECK (average_rating >= 1.0 AND average_rating <= 5.0) | Average of all ratings received (1.00 to 5.00) |
+| `total_reviews` | INTEGER | NOT NULL, DEFAULT 0, CHECK (total_reviews >= 0) | Total number of reviews received |
+| `rating_distribution` | JSONB | NOT NULL, DEFAULT '{"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}'::jsonb | Count of each rating (1-5 stars) |
 
-**Indexes**:
-- `idx_clients_email` ON `email` (for email lookups if provided)
-- `idx_clients_registered` ON `is_registered` (for filtering registered vs minimal profiles)
-- `idx_clients_reputation` ON `reputation_score DESC` (for sorting by reputation)
+**Existing Fields** (unchanged):
+- `id`, `wallet_address`, `email`, `company_name`, `projects_posted`, `projects_completed`, `total_spent`, `created_at`, `updated_at`
 
-**Relationships**:
-```typescript
-Client {
-  hasMany: [Project]
-  belongsTo: []
-}
+**Updated Indexes**:
+- Add: `idx_clients_average_rating` ON `average_rating DESC` (for sorting by rating)
+
+**Calculation Logic**:
+
+The `average_rating`, `total_reviews`, and `rating_distribution` fields are automatically updated by the `recalculate_ratings()` trigger function when reviews are created or updated.
+
+**Trigger Function Extension** (pseudocode):
+```sql
+CREATE OR REPLACE FUNCTION recalculate_ratings() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.reviewer_type = 'client' THEN
+    -- Update developer ratings (see developer/schema.md)
+    ...
+  ELSIF NEW.reviewer_type = 'developer' THEN
+    -- Update client ratings
+    UPDATE clients
+    SET
+      average_rating = (SELECT AVG(rating)::DECIMAL(3,2) FROM reviews WHERE reviewee_address = NEW.reviewee_address),
+      total_reviews = (SELECT COUNT(*) FROM reviews WHERE reviewee_address = NEW.reviewee_address),
+      rating_distribution = (
+        SELECT jsonb_build_object(
+          '1', COUNT(*) FILTER (WHERE rating = 1),
+          '2', COUNT(*) FILTER (WHERE rating = 2),
+          '3', COUNT(*) FILTER (WHERE rating = 3),
+          '4', COUNT(*) FILTER (WHERE rating = 4),
+          '5', COUNT(*) FILTER (WHERE rating = 5)
+        )
+        FROM reviews
+        WHERE reviewee_address = NEW.reviewee_address
+      ),
+      updated_at = NOW()
+    WHERE wallet_address = NEW.reviewee_address;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 ```
+
+## Validation Rules
+
+### Rule: Rating Consistency
+
+- **MUST** ensure average_rating is NULL when total_reviews = 0
+- **MUST** ensure average_rating is NOT NULL when total_reviews > 0
+- **MUST** ensure sum of rating_distribution values equals total_reviews
+
+### Rule: Rating Range
+
+- **MUST** keep average_rating between 1.0 and 5.0 when not NULL
+
+## Related Specs
+
+- **Capabilities**: `capabilities/review-management/spec.md`
+- **Data Models**: `data-models/review/schema.md`
+- **APIs**: `api/review-management/spec.md`
 
 ## Validation Rules
 
