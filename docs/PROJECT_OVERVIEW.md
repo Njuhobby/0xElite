@@ -157,11 +157,11 @@
 │   │  身份: 治理参与者                │  │  身份: 系统管理                  │ │
 │   │                                 │  │                                 │ │
 │   │  主要操作:                       │  │  主要操作:                       │ │
-│   │  • 审核开发者申请 (Spec 4)       │  │  • 收取平台手续费                │ │
-│   │  • 参与争议仲裁 (Spec 4)         │  │  • 维护系统运行                  │ │
-│   │  • 投票决策                      │  │                                 │ │
+│   │  • 参与争议仲裁 ✅               │  │  • 收取平台手续费                │ │
+│   │  • 投票决策 (EliteToken 权重) ✅ │  │  • 维护系统运行                  │ │
+│   │  • 查看争议详情和证据 ✅         │  │  • Owner 裁决 (未达法定人数)     │ │
 │   │                                 │  │                                 │ │
-│   │  (Spec 4 待实现)                 │  │                                 │ │
+│   │  (Spec 4 已实现)                 │  │                                 │ │
 │   │                                 │  │                                 │ │
 │   └─────────────────────────────────┘  └─────────────────────────────────┘ │
 │                                                                             │
@@ -403,6 +403,51 @@
 │   │  • completeMilestone(...)        - 完成里程碑                        │  │
 │   └─────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐  │
+│   │  EliteToken.sol (Spec 4 - DAO Arbitration)                         │  │
+│   ├─────────────────────────────────────────────────────────────────────┤  │
+│   │  Purpose: 灵魂绑定治理代币 (Soulbound ERC20Votes, UUPS)             │  │
+│   │                                                                     │  │
+│   │  Key Properties:                                                    │  │
+│   │  • Non-transferable (soulbound) - transfers always revert           │  │
+│   │  • ERC20Votes with timestamp-based clock (ERC-6372)                 │  │
+│   │  • 6 decimals (matching USDC)                                       │  │
+│   │                                                                     │  │
+│   │  Key Functions:                                                     │  │
+│   │  • mint(to, amount)              - 铸造投票权 (仅 owner)             │  │
+│   │  • burn(from, amount)            - 销毁投票权 (仅 owner)             │  │
+│   │                                                                     │  │
+│   │  Voting Power Formula:                                              │  │
+│   │  total_earned × (avg_rating / 5.0)                                  │  │
+│   └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐  │
+│   │  DisputeDAO.sol (Spec 4 - DAO Arbitration)                         │  │
+│   ├─────────────────────────────────────────────────────────────────────┤  │
+│   │  Purpose: DAO 治理的争议仲裁系统 (UUPS Upgradeable)                  │  │
+│   │                                                                     │  │
+│   │  4-Phase Lifecycle:                                                 │  │
+│   │  createDispute → submitEvidence → startVoting → resolve             │  │
+│   │                                                                     │  │
+│   │  Key Functions:                                                     │  │
+│   │  • createDispute(projectId)      - 发起争议 (50 USDC 仲裁费)        │  │
+│   │  • submitEvidence(id, uri)       - 提交证据 (7天窗口)                │  │
+│   │  • startVoting(id)               - 开始投票 (3天投票期)              │  │
+│   │  • castVote(id, supportClient)   - 投票 (按 EliteToken 权重)        │  │
+│   │  • executeResolution(id)         - 执行裁决                          │  │
+│   │  • ownerResolve(id, clientWins)  - Owner 裁决 (未达法定人数)          │  │
+│   │                                                                     │  │
+│   │  Events:                                                            │  │
+│   │  • DisputeCreated(id, projectId, initiator)                         │  │
+│   │  • EvidenceSubmitted(id, party, uri)                                │  │
+│   │  • VotingStarted(id, deadline)                                      │  │
+│   │  • VoteCast(id, voter, supportClient, weight)                       │  │
+│   │  • DisputeResolved(id, clientWon)                                   │  │
+│   │  • DisputeResolvedByOwner(id, clientWon)                            │  │
+│   │                                                                     │  │
+│   │  Quorum: 25% of total EliteToken supply required                    │  │
+│   └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -465,6 +510,28 @@
 │   │ rating (1-5)  │                                                        │
 │   │ comment       │                                                        │
 │   └───────────────┘                                                        │
+│                                                                             │
+│   ┌───────────────┐                                                        │
+│   │   disputes    │  (Spec 4 - 已实现)                                      │
+│   ├───────────────┤                                                        │
+│   │ project_id    │──────────────┐                                         │
+│   │ client_addr   │              │                                         │
+│   │ developer_addr│              │ 1:N                                     │
+│   │ initiator_addr│              │                                         │
+│   │ status        │  (open/voting/resolved)                                │
+│   │ evidence_uri  │  (client + developer)                                  │
+│   │ voting_deadline│             │                                         │
+│   │ vote_weights  │  (client/dev/total)                                    │
+│   │ winner        │  (client/developer/null)                               │
+│   │ arbitration_fee│ (50 USDC)   ▼                                         │
+│   └───────────────┘      ┌───────────────┐                                │
+│                          │dispute_votes  │                                │
+│                          ├───────────────┤                                │
+│                          │ dispute_id    │                                │
+│                          │ voter_address │                                │
+│                          │ support_client│  (boolean)                     │
+│                          │ vote_weight   │                                │
+│                          └───────────────┘                                │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -582,6 +649,16 @@
 │   GET    /project/:id           获取项目评价                                 │
 │   PUT    /:id                   编辑评价 (7天内)                              │
 │                                                                             │
+│   Disputes API (/api/disputes) (Spec 4)                                     │
+│   ─────────────────────────────────────                                     │
+│   POST   /                      创建争议 (签名验证)                          │
+│   GET    /:id                   获取争议详情                                 │
+│   GET    /project/:projectId    获取项目争议                                 │
+│   PUT    /:id/evidence          提交/更新证据 (签名验证)                      │
+│   GET    /:id/votes             获取争议投票列表                             │
+│   GET    /active/list           获取活跃争议列表                             │
+│   GET    /my/:address           获取用户相关争议                             │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -619,11 +696,16 @@
 │   • Payment history tracking                                                │
 │                                                                             │
 │   Spec 4: DAO Arbitration                                                   │
-│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   0% ❌      │
-│   [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]                      │
-│   • Dispute creation                                                        │
-│   • DAO voting mechanism                                                    │
-│   • Resolution execution                                                    │
+│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  95% ✅      │
+│   [████████████████████████████████████████████████░░]                      │
+│   • EliteToken.sol (soulbound ERC20Votes governance) ✅                    │
+│   • DisputeDAO.sol (4-phase arbitration lifecycle) ✅                      │
+│   • Smart contract tests (23 + 52 = 75 tests) ✅                          │
+│   • Database migration 005 (disputes + dispute_votes) ✅                   │
+│   • Dispute API routes (7 endpoints) ✅                                    │
+│   • Dispute event listener + voting power sync ✅                          │
+│   • Frontend dispute pages (/disputes, /disputes/[id]) ✅                  │
+│   • Remaining: E2E integration testing, contract deployment                │
 │                                                                             │
 │   Spec 5: Reviews & Ratings                                                 │
 │   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% ✅      │
@@ -645,8 +727,8 @@
 │   • Auto-redirect for registered clients ✅                                 │
 │                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│   Overall Progress:  ~80%                                                   │
-│   [████████████████████████████████████████░░░░░░░░░░]                      │
+│   Overall Progress:  ~95%                                                   │
+│   [████████████████████████████████████████████████░░]                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -697,12 +779,16 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_STAKE_VAULT_ADDRESS=0x...
 NEXT_PUBLIC_ESCROW_VAULT_ADDRESS=0x...
 NEXT_PUBLIC_USDC_ADDRESS=0x...
+NEXT_PUBLIC_DISPUTE_DAO_ADDRESS=0x...
+NEXT_PUBLIC_ELITE_TOKEN_ADDRESS=0x...
 
 # Backend (.env)
 DATABASE_URL=postgresql://user:pass@localhost:5432/oxelite
 RPC_URL=https://...
 STAKE_VAULT_ADDRESS=0x...
 ESCROW_VAULT_ADDRESS=0x...
+DISPUTE_DAO_ADDRESS=0x...
+ELITE_TOKEN_ADDRESS=0x...
 ```
 
 ### Key File Locations
@@ -718,12 +804,15 @@ ESCROW_VAULT_ADDRESS=0x...
 │   │   │   ├── page.tsx                #   Profile view
 │   │   │   ├── projects/page.tsx       #   Projects list
 │   │   │   └── settings/page.tsx       #   Settings
-│   │   └── dashboard/client/           # Client dashboard
-│   │       ├── layout.tsx              #   Sidebar + client status check
-│   │       ├── page.tsx                #   Profile + registration
-│   │       ├── projects/page.tsx       #   Projects list + create
-│   │       ├── projects/[id]/page.tsx  #   Project detail + milestones
-│   │       └── settings/page.tsx       #   Settings
+│   │   ├── dashboard/client/           # Client dashboard
+│   │   │   ├── layout.tsx              #   Sidebar + client status check
+│   │   │   ├── page.tsx                #   Profile + registration
+│   │   │   ├── projects/page.tsx       #   Projects list + create
+│   │   │   ├── projects/[id]/page.tsx  #   Project detail + milestones
+│   │   │   └── settings/page.tsx       #   Settings
+│   │   └── disputes/                   # DAO Arbitration (Spec 4)
+│   │       ├── page.tsx                #   Disputes list + filters
+│   │       └── [id]/page.tsx           #   Dispute detail + evidence + voting
 │   └── src/components/
 │       ├── ConnectWallet.tsx
 │       ├── developer/
@@ -732,11 +821,14 @@ ESCROW_VAULT_ADDRESS=0x...
 │       ├── client/
 │       │   ├── EditClientProfileModal.tsx
 │       │   └── CreateProjectModal.tsx
-│       └── reviews/
-│           ├── RatingStars.tsx
-│           ├── ReviewCard.tsx
-│           ├── ReviewList.tsx
-│           └── SubmitReviewModal.tsx
+│       ├── reviews/
+│       │   ├── RatingStars.tsx
+│       │   ├── ReviewCard.tsx
+│       │   ├── ReviewList.tsx
+│       │   └── SubmitReviewModal.tsx
+│       └── disputes/
+│           ├── DisputeStatusBadge.tsx
+│           └── DisputeCard.tsx
 │
 ├── backend/
 │   ├── src/api/routes/
@@ -745,24 +837,36 @@ ESCROW_VAULT_ADDRESS=0x...
 │   │   ├── projects.ts
 │   │   ├── milestones.ts
 │   │   ├── escrow.ts
-│   │   └── reviews.ts
+│   │   ├── reviews.ts
+│   │   └── disputes.ts             # Spec 4
 │   ├── src/services/
 │   │   ├── matchingAlgorithm.ts
-│   │   └── escrowEventListener.ts
+│   │   ├── escrowEventListener.ts
+│   │   ├── votingPowerSync.ts       # Spec 4
+│   │   └── eventListeners/
+│   │       └── disputeListener.ts   # Spec 4
 │   ├── src/types/
 │   │   ├── developer.ts
 │   │   ├── client.ts
-│   │   └── review.ts
+│   │   ├── review.ts
+│   │   └── dispute.ts              # Spec 4
 │   └── src/db/migrations/
 │       ├── 001_create_developers_table.sql
 │       ├── 002_create_project_tables.sql
 │       ├── 003_create_escrow_tables.sql
-│       └── 004_create_reviews_table.sql
+│       ├── 004_create_reviews_table.sql
+│       └── 005_create_dispute_tables.sql  # Spec 4
 │
 ├── contracts/
-│   ├── StakeVault.sol
-│   ├── EscrowVault.sol
-│   └── ProjectManager.sol
+│   ├── contracts/
+│   │   ├── StakeVault.sol
+│   │   ├── EscrowVault.sol
+│   │   ├── ProjectManager.sol
+│   │   ├── EliteToken.sol           # Spec 4 (soulbound ERC20Votes)
+│   │   └── DisputeDAO.sol           # Spec 4 (DAO arbitration)
+│   └── test/
+│       ├── EliteToken.test.js       # 23 tests
+│       └── DisputeDAO.test.js       # 52 tests
 │
 └── specs/
     ├── capabilities/
@@ -784,18 +888,20 @@ ESCROW_VAULT_ADDRESS=0x...
     │   ├── project-manager-contract/
     │   └── matching-algorithm/
     └── changes/archive/                # Archived change proposals
+        └── add-dao-arbitration/        # Spec 4 (archived)
 ```
 
 ---
 
 ## Next Steps
 
-1. **Deploy Contracts** - 部署 StakeVault, EscrowVault, ProjectManager 到测试网
-2. **Configure Addresses** - 在 .env 中配置合约地址
-3. **Implement Spec 4** - DAO Arbitration 系统 (争议创建, DAO投票, 裁决执行)
-4. **E2E Testing** - 端到端测试完整项目生命周期
+1. **Deploy Contracts** - 部署 StakeVault, EscrowVault, ProjectManager, EliteToken, DisputeDAO 到测试网
+2. **Configure Addresses** - 在 .env 中配置合约地址 (包括 EliteToken, DisputeDAO)
+3. **E2E Integration Testing** - 端到端测试完整争议仲裁生命周期
+4. **Voting Power Sync** - 部署后运行 votingPowerSync 同步开发者投票权
 5. **Gas Optimization** - 合约 gas 优化和安全审计
+6. **Frontend Build Fix** - 修复 projects/create wagmi v3 API 兼容性问题
 
 ---
 
-*Last updated: February 17, 2026*
+*Last updated: February 23, 2026*

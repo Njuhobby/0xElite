@@ -117,6 +117,7 @@ export default function DeveloperDashboardLayout({
   const navItems = [
     { name: 'Profile', href: '/dashboard/developer', icon: '👤' },
     { name: 'Projects', href: '/dashboard/developer/projects', icon: '📁' },
+    { name: 'Disputes', href: '/disputes', icon: '⚖️' },
     { name: 'Settings', href: '/dashboard/developer/settings', icon: '⚙️' },
   ];
 

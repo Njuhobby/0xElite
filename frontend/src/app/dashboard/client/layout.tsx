@@ -65,6 +65,7 @@ export default function ClientDashboardLayout({
   const navItems = [
     { name: 'Profile', href: '/dashboard/client', icon: '👤' },
     { name: 'Projects', href: '/dashboard/client/projects', icon: '📁' },
+    { name: 'Disputes', href: '/disputes', icon: '⚖️' },
     { name: 'Settings', href: '/dashboard/client/settings', icon: '⚙️' },
   ];
 

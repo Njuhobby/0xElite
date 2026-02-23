@@ -9,6 +9,7 @@ import milestonesRouter, { initialize as initializeMilestones } from './api/rout
 import clientsRouter, { initialize as initializeClients } from './api/routes/clients';
 import escrowRouter, { initialize as initializeEscrow } from './api/routes/escrow';
 import reviewsRouter from './api/routes/reviews';
+import disputesRouter from './api/routes/disputes';
 import { databaseConfig } from './config/database';
 
 dotenv.config();
@@ -91,6 +92,7 @@ app.use('/api/milestones', milestonesRouter);
 app.use('/api/clients', clientsRouter);
 app.use('/api/escrow', escrowRouter);
 app.use('/api/reviews', reviewsRouter);
+app.use('/api/disputes', disputesRouter);
 
 // 404 handler
 app.use((req, res) => {

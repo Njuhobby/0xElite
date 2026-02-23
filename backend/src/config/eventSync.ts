@@ -10,6 +10,8 @@ export const eventSyncConfig = {
 
   // Contract addresses
   stakeVaultAddress: process.env.STAKE_VAULT_ADDRESS || '',
+  disputeDAOAddress: process.env.DISPUTE_DAO_ADDRESS || '',
+  eliteTokenAddress: process.env.ELITE_TOKEN_ADDRESS || '',
 
   // Sync settings
   startBlock: parseInt(process.env.START_BLOCK || '0'), // Block to start syncing from
