@@ -1,4 +1,4 @@
-# RFC-002: Sybil Prevention Mechanism
+# RFC-005: Sybil Prevention Mechanism
 
 ## Metadata
 - **Status**: Accepted

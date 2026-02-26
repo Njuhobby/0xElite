@@ -1,4 +1,4 @@
-# RFC-003: Task Assignment and Rejection Policy
+# RFC-006: Task Assignment and Rejection Policy
 
 ## Metadata
 - **Status**: Accepted

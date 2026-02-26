@@ -354,4 +354,4 @@ If the service crashes:
 - **Capabilities**: `capabilities/developer-onboarding/spec.md`
 - **Data Models**: `data-models/developer/schema.md`
 - **Architecture**: `architecture/stake-vault-contract/spec.md`
-- **RFCs**: [RFC-004](../../../../rfcs/RFC-004-data-architecture.md)
+- **RFCs**: [RFC-007](../../../../../../docs/RFC/RFC-007-data-architecture.md)

@@ -1,4 +1,4 @@
-# RFC-001: Identity and Login System
+# RFC-004: Identity and Login System
 
 ## Metadata
 - **Status**: Accepted

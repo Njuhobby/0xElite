@@ -197,4 +197,4 @@ contract StakeVault is Ownable, ReentrancyGuard {
 - **Data Models**: `data-models/developer/schema.md`
 - **APIs**: `api/developer-management/spec.md`
 - **Architecture**: `architecture/event-sync-system/spec.md`
-- **RFCs**: [RFC-002](../../../../rfcs/RFC-002-sybil-prevention.md), [RFC-004](../../../../rfcs/RFC-004-data-architecture.md)
+- **RFCs**: [RFC-005](../../../../docs/RFC/RFC-005-sybil-prevention.md), [RFC-007](../../../../docs/RFC/RFC-007-data-architecture.md)

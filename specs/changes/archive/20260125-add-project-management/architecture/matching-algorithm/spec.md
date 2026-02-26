@@ -351,4 +351,4 @@ Auto-assignment is binding. Developers are immediately assigned without confirma
 - **Data Models**: `data-models/project/schema.md`, `data-models/developer/schema.md`
 - **APIs**: `api/project-management/spec.md`
 - **Architecture**: `architecture/project-manager-contract/spec.md`
-- **RFCs**: [RFC-002](../../../../rfcs/RFC-002-sybil-prevention.md), [RFC-003](../../../../rfcs/RFC-003-task-assignment.md)
+- **RFCs**: [RFC-005](../../../../../../docs/RFC/RFC-005-sybil-prevention.md), [RFC-006](../../../../../../docs/RFC/RFC-006-task-assignment.md)

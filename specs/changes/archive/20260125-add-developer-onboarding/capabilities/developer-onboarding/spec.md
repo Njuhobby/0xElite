@@ -176,4 +176,4 @@ The system SHALL automatically activate developer accounts upon detecting succes
 - **Data Models**: `data-models/developer/schema.md`
 - **APIs**: `api/developer-management/spec.md`
 - **Architecture**: `architecture/stake-vault-contract/spec.md`, `architecture/event-sync-system/spec.md`
-- **RFCs**: [RFC-001](../../../../rfcs/RFC-001-identity-and-login.md), [RFC-002](../../../../rfcs/RFC-002-sybil-prevention.md)
+- **RFCs**: [RFC-004](../../../../../../docs/RFC/RFC-004-identity-and-login.md), [RFC-005](../../../../../../docs/RFC/RFC-005-sybil-prevention.md)

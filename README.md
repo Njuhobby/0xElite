@@ -231,11 +231,14 @@ The platform now supports:
 │   │   └── archive/
 │   │       ├── 20260125-add-developer-onboarding/  # Spec 1
 │   │       └── 20260125-add-escrow-system/         # Spec 3
-│   └── rfcs/
-│       ├── RFC-001-identity-and-login.md
-│       ├── RFC-002-sybil-prevention.md
-│       ├── RFC-003-task-assignment.md
-│       └── RFC-004-data-architecture.md
+│   └── RFC/                                       # All RFCs consolidated here
+│       ├── RFC-001-data-sync-strategy.md
+│       ├── RFC-002-onchain-storage-decisions.md
+│       ├── RFC-003-DAO-Arbitration-System.md
+│       ├── RFC-004-identity-and-login.md
+│       ├── RFC-005-sybil-prevention.md
+│       ├── RFC-006-task-assignment.md
+│       └── RFC-007-data-architecture.md
 │
 └── README.md
 ```
@@ -596,10 +599,13 @@ Key architectural decisions documented in RFCs:
 
 | Topic | Decision | RFC |
 |-------|----------|-----|
-| Identity & Login | Pure wallet login, 1:1 binding | [RFC-001](./rfcs/RFC-001-identity-and-login.md) |
-| Sybil Prevention | 150 USDC stake + labor cost + opportunity cost | [RFC-002](./rfcs/RFC-002-sybil-prevention.md) |
-| Task Assignment | No-refusal policy with exceptions | [RFC-003](./rfcs/RFC-003-task-assignment.md) |
-| Data Architecture | On-chain: stakes, funds, disputes<br>Off-chain: profiles, ratings, matching | [RFC-004](./rfcs/RFC-004-data-architecture.md) |
+| Data Sync Strategy | On-chain/off-chain data synchronization | [RFC-001](./docs/RFC/RFC-001-data-sync-strategy.md) |
+| On-chain Storage | What goes on-chain vs off-chain | [RFC-002](./docs/RFC/RFC-002-onchain-storage-decisions.md) |
+| DAO Arbitration | Community-driven dispute resolution | [RFC-003](./docs/RFC/RFC-003-DAO-Arbitration-System.md) |
+| Identity & Login | Pure wallet login, 1:1 binding | [RFC-004](./docs/RFC/RFC-004-identity-and-login.md) |
+| Sybil Prevention | 150 USDC stake + labor cost + opportunity cost | [RFC-005](./docs/RFC/RFC-005-sybil-prevention.md) |
+| Task Assignment | No-refusal policy with exceptions | [RFC-006](./docs/RFC/RFC-006-task-assignment.md) |
+| Data Architecture | On-chain: stakes, funds, disputes<br>Off-chain: profiles, ratings, matching | [RFC-007](./docs/RFC/RFC-007-data-architecture.md) |
 
 ## Roadmap
 

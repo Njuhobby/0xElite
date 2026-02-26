@@ -1,4 +1,4 @@
-# RFC-004: Data Architecture - On-chain vs Off-chain
+# RFC-007: Data Architecture - On-chain vs Off-chain
 
 ## Metadata
 - **Status**: Accepted
