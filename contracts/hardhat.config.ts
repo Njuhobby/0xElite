@@ -1,8 +1,8 @@
-require("@nomicfoundation/hardhat-toolbox");
-require("@openzeppelin/hardhat-upgrades");
+import "@nomicfoundation/hardhat-toolbox";
+import "@openzeppelin/hardhat-upgrades";
+import { HardhatUserConfig } from "hardhat/config";
 
-/** @type import('hardhat/config').HardhatUserConfig */
-module.exports = {
+const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.22",
     settings: {
@@ -35,3 +35,5 @@ module.exports = {
     artifacts: "./artifacts",
   },
 };
+
+export default config;
