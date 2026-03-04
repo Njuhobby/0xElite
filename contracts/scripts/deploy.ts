@@ -8,6 +8,7 @@ async function main() {
   const USDC_ADDRESS = process.env.USDC_ADDRESS || "";
   const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS || deployer.address;
   const REQUIRED_STAKE = process.env.REQUIRED_STAKE || "150000000"; // 150 USDC (6 decimals)
+  const PLATFORM_FEE_BPS = parseInt(process.env.PLATFORM_FEE_BPS || "1000"); // 1000 = 10%
 
   if (!USDC_ADDRESS) {
     console.log("\n⚠️  USDC_ADDRESS not set. Deploying MockUSDC for testing...");
@@ -49,7 +50,7 @@ async function main() {
   const ProjectManager = await ethers.getContractFactory("ProjectManager");
   const projectManager = await upgrades.deployProxy(
     ProjectManager,
-    [deployer.address],
+    [deployer.address, escrowVaultAddress, TREASURY_ADDRESS, PLATFORM_FEE_BPS],
     { kind: "uups" }
   );
   await projectManager.waitForDeployment();
@@ -71,6 +72,7 @@ async function main() {
   console.log(`EscrowVault:       ${escrowVaultAddress}`);
   console.log(`ProjectManager:    ${projectManagerAddress}`);
   console.log(`Treasury:          ${TREASURY_ADDRESS}`);
+  console.log(`Platform Fee:      ${PLATFORM_FEE_BPS} bps (${PLATFORM_FEE_BPS / 100}%)`);
   console.log("─".repeat(60));
 
   console.log("\n📝 Add these to your .env file:");
