@@ -22,6 +22,10 @@ Stores developer profile information, including identity, skills, economic stake
 | `elite_token_balance` | DECIMAL(20,6) | NOT NULL, DEFAULT 0 | Current EliteToken balance on-chain (synced from events) |
 | `last_voting_power_update` | TIMESTAMP | NULL | When voting power was last recalculated |
 
+| `admin_notes` | TEXT | NULL | Admin notes for approval/rejection reason |
+| `reviewed_by` | VARCHAR(42) | NULL | Wallet address of reviewing admin |
+| `reviewed_at` | TIMESTAMP | NULL | When admin reviewed the application |
+
 **Existing Fields** (unchanged):
 - `id`, `wallet_address`, `email`, `github_username`, `skills`, `bio`, `hourly_rate`, `availability`, `current_project_id`, `total_earned`, `projects_completed`, `total_staked`, `account_activated`, `status`, `profile_picture_url`, `created_at`, `updated_at`
 
@@ -139,7 +143,9 @@ $$ LANGUAGE plpgsql;
 ### Rule: Status Transitions
 
 - **MUST** start as 'pending' on registration
-- **MUST** transition to 'active' when stake amount >= required stake
+- **MUST** transition to 'staked' when stake event detected
+- **MUST** transition to 'active' only by admin approval (from 'staked')
+- **MAY** transition to 'rejected' by admin action (from 'staked')
 - **MAY** transition to 'suspended' by admin action
 - **MUST NOT** transition from 'active' to 'pending'
 
@@ -151,7 +157,8 @@ $$ LANGUAGE plpgsql;
 2. Backend validates signature and uniqueness
 3. Create record with `status='pending'`, `stake_amount=0`
 4. Developer stakes USDC on-chain
-5. Event listener updates `status='active'`, `stake_amount=X`, `staked_at=NOW()`
+5. Event listener updates `status='staked'`, `stake_amount=X`, `staked_at=NOW()`, pending admin review
+6. Admin reviews and approves (status='active') or rejects (status='rejected')
 
 ### Updates (PUT /developers/:address)
 

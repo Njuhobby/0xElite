@@ -390,6 +390,229 @@ List developers with filtering and pagination.
 }
 ```
 
+---
+
+## Admin Management API
+
+**Base URL**: `/api/admin`
+**Authentication**: Wallet signature + admin address verification via `ADMIN_ADDRESSES` environment variable
+
+Admin addresses are configured as a comma-separated list in the `ADMIN_ADDRESSES` environment variable (e.g., `ADMIN_ADDRESSES=0xAddr1,0xAddr2`).
+
+### GET /api/admin/developers
+
+List developers with 'staked' status awaiting admin review (paginated).
+
+**Authentication**: None (public listing)
+
+**Query Parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | 1 | Page number |
+| `limit` | integer | 20 | Items per page (max 100) |
+
+**Responses**:
+
+#### 200 OK - Success
+
+```json
+{
+  "data": [
+    {
+      "walletAddress": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
+      "email": "alice@example.com",
+      "githubUsername": "alice-dev",
+      "skills": ["Solidity", "React"],
+      "bio": "Full-stack Web3 developer",
+      "hourlyRate": 120,
+      "stakeAmount": "150.000000",
+      "stakedAt": "2024-01-25T10:00:00Z",
+      "status": "staked",
+      "createdAt": "2024-01-25T09:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 5,
+    "totalPages": 1
+  }
+}
+```
+
+---
+
+### PUT /api/admin/developers/:address/approve
+
+Approve a staked developer, transitioning their status to 'active'.
+
+**Authentication**: Wallet signature + admin address required
+
+**Request**:
+
+```json
+{
+  "address": "0xAdminWallet",
+  "message": "Approve developer 0x742d35cc6634c0532925a3b844bc9e7595f0beb for 0xElite",
+  "signature": "0x...",
+  "notes": "Strong GitHub profile, verified skills"
+}
+```
+
+**Request Fields**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `address` | string | Yes | Admin wallet address |
+| `message` | string | Yes | Message that was signed |
+| `signature` | string | Yes | Signature of the message |
+| `notes` | string | No | Optional admin notes |
+
+**Responses**:
+
+#### 200 OK - Success
+
+```json
+{
+  "message": "Developer approved successfully",
+  "developer": {
+    "walletAddress": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
+    "status": "active",
+    "reviewedBy": "0xAdminWallet",
+    "reviewedAt": "2024-01-26T12:00:00Z"
+  }
+}
+```
+
+#### 401 Unauthorized - Invalid Signature
+
+```json
+{
+  "error": "INVALID_SIGNATURE",
+  "message": "Wallet signature verification failed"
+}
+```
+
+#### 403 Forbidden - Not Admin
+
+```json
+{
+  "error": "FORBIDDEN",
+  "message": "Only admin wallets can perform this action"
+}
+```
+
+#### 404 Not Found
+
+```json
+{
+  "error": "NOT_FOUND",
+  "message": "Developer not found"
+}
+```
+
+#### 422 Unprocessable Entity - Invalid State
+
+```json
+{
+  "error": "INVALID_STATE",
+  "message": "Developer is not in 'staked' status"
+}
+```
+
+---
+
+### PUT /api/admin/developers/:address/reject
+
+Reject a staked developer, transitioning their status to 'rejected'.
+
+**Authentication**: Wallet signature + admin address required
+
+**Request**:
+
+```json
+{
+  "address": "0xAdminWallet",
+  "message": "Reject developer 0x742d35cc6634c0532925a3b844bc9e7595f0beb for 0xElite",
+  "signature": "0x...",
+  "reason": "Insufficient GitHub activity, no verifiable work history"
+}
+```
+
+**Request Fields**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `address` | string | Yes | Admin wallet address |
+| `message` | string | Yes | Message that was signed |
+| `signature` | string | Yes | Signature of the message |
+| `reason` | string | Yes | Required reason for rejection |
+
+**Responses**:
+
+#### 200 OK - Success
+
+```json
+{
+  "message": "Developer rejected",
+  "developer": {
+    "walletAddress": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
+    "status": "rejected",
+    "adminNotes": "Insufficient GitHub activity, no verifiable work history",
+    "reviewedBy": "0xAdminWallet",
+    "reviewedAt": "2024-01-26T12:00:00Z"
+  }
+}
+```
+
+#### 400 Bad Request - Missing Reason
+
+```json
+{
+  "error": "VALIDATION_ERROR",
+  "message": "Rejection reason is required"
+}
+```
+
+#### 401 Unauthorized - Invalid Signature
+
+```json
+{
+  "error": "INVALID_SIGNATURE",
+  "message": "Wallet signature verification failed"
+}
+```
+
+#### 403 Forbidden - Not Admin
+
+```json
+{
+  "error": "FORBIDDEN",
+  "message": "Only admin wallets can perform this action"
+}
+```
+
+#### 404 Not Found
+
+```json
+{
+  "error": "NOT_FOUND",
+  "message": "Developer not found"
+}
+```
+
+#### 422 Unprocessable Entity - Invalid State
+
+```json
+{
+  "error": "INVALID_STATE",
+  "message": "Developer is not in 'staked' status"
+}
+```
+
+---
+
 ## Error Codes
 
 | Code | HTTP Status | Description |
@@ -400,6 +623,7 @@ List developers with filtering and pagination.
 | `NOT_FOUND` | 404 | Developer not found |
 | `DUPLICATE_ENTRY` | 409 | Wallet, email, or GitHub already exists |
 | `INVALID_QUERY` | 400 | Invalid query parameters |
+| `INVALID_STATE` | 422 | Developer not in expected status for this action |
 
 ## Related Specs
 

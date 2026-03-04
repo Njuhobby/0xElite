@@ -89,6 +89,21 @@ Layer 3: Opportunity Cost
     └── Abandoning high-reputation account for new ones is irrational
 ```
 
+### Layer 0: Admin Approval Gate
+
+Before any staked developer becomes an active member, an admin must manually review and approve their application. This provides a human-in-the-loop curation layer on top of the economic barrier.
+
+**Key design points:**
+- Staking alone does not grant membership — it transitions the developer to 'staked' status, not 'active'
+- Admin reviews the developer's profile (GitHub activity, skills claims, bio) before activation
+- Rejection preserves the developer's ability to unstake and recover their funds
+- **Rationale**: An economic barrier is necessary but not sufficient for "elite" curation. The admin gate ensures quality control and prevents well-funded bad actors from bypassing the economic filter
+
+```
+Flow: Register (pending) → Stake USDC (staked) → Admin approves (active)
+                                                → Admin rejects (rejected)
+```
+
 ### Staking Mechanism
 
 ```

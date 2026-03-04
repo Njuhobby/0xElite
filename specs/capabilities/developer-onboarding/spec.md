@@ -48,7 +48,7 @@ The system SHALL require developers to stake USDC tokens to activate their accou
 - **WHEN** a developer calls stake() with amount >= requiredStake
 - **THEN** the smart contract SHALL transfer USDC from developer to StakeVault
 - **AND** the smart contract SHALL emit Staked event
-- **AND** the backend SHALL listen to the event and update developer.status to 'active'
+- **AND** the backend SHALL listen to the event and update developer.status to 'staked'
 
 #### Scenario: Developer attempts to stake insufficient USDC
 
@@ -152,17 +152,16 @@ The system SHALL allow developers to update their profile information after regi
 - **THEN** the system SHALL reject the request with 403 Forbidden
 - **AND** the system SHALL display error "You can only edit your own profile"
 
-### Requirement: Event-Driven Account Activation
+### Requirement: Event-Driven Stake Recording
 
-The system SHALL automatically activate developer accounts upon detecting successful stake transactions on the blockchain.
+The system SHALL automatically record developer stakes upon detecting successful stake transactions on the blockchain.
 
 #### Scenario: Staked event detected for pending developer
 
 - **WHEN** the backend listener detects a Staked event for a developer with status 'pending'
-- **THEN** the system SHALL update developer.status to 'active'
+- **THEN** the system SHALL update developer.status to 'staked'
 - **AND** the system SHALL update developer.stakeAmount with the staked value
 - **AND** the system SHALL update developer.stakedAt with current timestamp
-- **AND** the system SHALL send a welcome email to the developer
 
 #### Scenario: Event processing fails
 
@@ -170,6 +169,39 @@ The system SHALL automatically activate developer accounts upon detecting succes
 - **THEN** the system SHALL log the error with details
 - **AND** the system SHALL add the event to a retry queue
 - **AND** the system SHALL retry processing after configured interval
+
+### Requirement: Admin Approval
+
+The system SHALL require admin approval before a staked developer becomes an active member. Admins are identified by designated wallet addresses configured via environment variable.
+
+#### Scenario: Admin approves staked developer
+
+- **WHEN** an admin calls the approve endpoint for a developer with status 'staked'
+- **THEN** the system SHALL update developer.status to 'active'
+- **AND** the system SHALL record the admin's wallet address as reviewed_by
+- **AND** the system SHALL record the review timestamp as reviewed_at
+- **AND** the system SHALL optionally store admin notes
+- **AND** the system SHALL send a welcome email to the developer
+
+#### Scenario: Admin rejects staked developer
+
+- **WHEN** an admin calls the reject endpoint for a developer with status 'staked'
+- **THEN** the system SHALL update developer.status to 'rejected'
+- **AND** the system SHALL record the rejection reason in admin_notes
+- **AND** the system SHALL record the admin's wallet address as reviewed_by
+- **AND** the system SHALL record the review timestamp as reviewed_at
+
+#### Scenario: Non-admin attempts approval
+
+- **WHEN** a non-admin wallet attempts to approve or reject a developer
+- **THEN** the system SHALL return 403 Forbidden
+- **AND** the system SHALL not modify the developer record
+
+#### Scenario: Approve/reject developer not in 'staked' status
+
+- **WHEN** an admin attempts to approve or reject a developer not in 'staked' status
+- **THEN** the system SHALL return 422 Invalid State
+- **AND** the system SHALL not modify the developer record
 
 ## Related Specs
 
