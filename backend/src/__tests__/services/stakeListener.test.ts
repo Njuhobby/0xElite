@@ -118,6 +118,10 @@ describe('StakeEventListener', () => {
     await (listener as any).processStakedEvent(mockEvent);
     expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
     expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+
+    // Verify status is set to 'staked' (not 'active') pending admin approval
+    const updateCall = mockClient.query.mock.calls[1];
+    expect(updateCall[0]).toContain("status = 'staked'");
   });
 
   it('processStakedEvent rolls back when developer not found', async () => {

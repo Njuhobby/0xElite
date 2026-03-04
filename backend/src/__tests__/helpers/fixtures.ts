@@ -34,6 +34,17 @@ export const SAMPLE_DEVELOPER = {
   updated_at: new Date('2024-06-01'),
 };
 
+export const SAMPLE_DEVELOPER_STAKED = {
+  ...SAMPLE_DEVELOPER,
+  wallet_address: ADDRESSES.developer1,
+  status: 'staked',
+  stake_amount: '150.000000',
+  staked_at: new Date('2024-01-15'),
+  admin_notes: null,
+  reviewed_by: null,
+  reviewed_at: null,
+};
+
 export const SAMPLE_DEVELOPER_2 = {
   ...SAMPLE_DEVELOPER,
   wallet_address: ADDRESSES.developer2,
@@ -193,6 +204,12 @@ export const CLIENT_AUTH = {
   address: ADDRESSES.client1,
   message: 'Sign this message',
   signature: '0x' + 'cd'.repeat(65),
+};
+
+export const ADMIN_AUTH = {
+  address: ADDRESSES.admin,
+  message: 'Sign this message',
+  signature: '0x' + 'ee'.repeat(65),
 };
 
 // Sample dispute vote

@@ -7,4 +7,5 @@ process.env.ESCROW_VAULT_ADDRESS = '0x' + '22'.repeat(20);
 process.env.STAKE_VAULT_ADDRESS = '0x' + '33'.repeat(20);
 process.env.DISPUTE_DAO_ADDRESS = '0x' + '44'.repeat(20);
 process.env.ELITE_TOKEN_ADDRESS = '0x' + '55'.repeat(20);
+process.env.ADMIN_ADDRESSES = '0x' + 'ee'.repeat(20);
 process.env.NODE_ENV = 'test';
