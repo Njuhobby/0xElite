@@ -14,7 +14,7 @@ interface Developer {
   hourlyRate: number | null;
   availability: 'available' | 'busy' | 'vacation';
   stakeAmount: string;
-  status: 'pending' | 'active' | 'suspended';
+  status: 'pending' | 'staked' | 'active' | 'rejected' | 'suspended';
   createdAt: string;
   updatedAt?: string;
 }
@@ -77,9 +77,11 @@ export default function DeveloperDashboardPage() {
     vacation: 'bg-gray-500',
   };
 
-  const statusColors = {
+  const statusColors: Record<string, string> = {
     pending: 'bg-yellow-500',
+    staked: 'bg-blue-500',
     active: 'bg-green-500',
+    rejected: 'bg-red-800',
     suspended: 'bg-red-500',
   };
 
@@ -89,6 +91,26 @@ export default function DeveloperDashboardPage() {
         <h1 className="text-3xl font-bold text-white mb-2">My Profile</h1>
         <p className="text-gray-300">Manage your developer profile and settings</p>
       </div>
+
+      {/* Status Messages */}
+      {developer.status === 'staked' && (
+        <div className="mb-6 p-4 bg-blue-600/10 border border-blue-500/30 rounded-xl">
+          <h3 className="text-blue-400 font-semibold mb-1">Application Under Review</h3>
+          <p className="text-gray-300 text-sm">
+            Your stake has been received. An admin will review your application shortly.
+            You will be notified once your account is approved.
+          </p>
+        </div>
+      )}
+
+      {developer.status === 'rejected' && (
+        <div className="mb-6 p-4 bg-red-600/10 border border-red-500/30 rounded-xl">
+          <h3 className="text-red-400 font-semibold mb-1">Application Rejected</h3>
+          <p className="text-gray-300 text-sm">
+            Your application was not approved. You may unstake your USDC to recover your funds.
+          </p>
+        </div>
+      )}
 
       {/* Profile Card */}
       <div className="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-8 mb-6">

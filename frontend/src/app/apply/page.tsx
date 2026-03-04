@@ -74,7 +74,7 @@ export default function ApplyPage() {
               formData={formData}
               onBack={() => setStep('form')}
               onSuccess={() => {
-                router.push(`/developers/${address}`);
+                router.push('/dashboard/developer');
               }}
             />
           )}

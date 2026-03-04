@@ -14,7 +14,7 @@ export default function DeveloperDashboardLayout({
   const { address, isConnected } = useAccount();
   const router = useRouter();
   const pathname = usePathname();
-  const [developerStatus, setDeveloperStatus] = useState<'loading' | 'active' | 'pending' | 'unauthorized'>('loading');
+  const [developerStatus, setDeveloperStatus] = useState<'loading' | 'active' | 'staked' | 'rejected' | 'pending' | 'unauthorized'>('loading');
 
   useEffect(() => {
     if (!isConnected || !address) {
@@ -22,7 +22,7 @@ export default function DeveloperDashboardLayout({
       return;
     }
 
-    // Check if connected wallet is an active developer
+    // Check if connected wallet is a registered developer
     const checkDeveloperStatus = async () => {
       try {
         const response = await fetch(
@@ -36,8 +36,8 @@ export default function DeveloperDashboardLayout({
 
         const data = await response.json();
 
-        if (data.status === 'active') {
-          setDeveloperStatus('active');
+        if (data.status === 'active' || data.status === 'staked' || data.status === 'rejected') {
+          setDeveloperStatus(data.status);
         } else if (data.status === 'pending') {
           setDeveloperStatus('pending');
         } else {
@@ -86,6 +86,9 @@ export default function DeveloperDashboardLayout({
       </div>
     );
   }
+
+  // Staked and rejected developers can see the dashboard (with status messages)
+  // so we fall through to the main layout below
 
   // Show pending state
   if (developerStatus === 'pending') {

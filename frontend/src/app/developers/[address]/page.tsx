@@ -15,7 +15,7 @@ interface Developer {
   hourlyRate: number | null;
   availability: 'available' | 'busy' | 'vacation';
   stakeAmount: string;
-  status: 'pending' | 'active' | 'suspended';
+  status: 'pending' | 'staked' | 'active' | 'rejected' | 'suspended';
   createdAt: string;
   updatedAt?: string;
 }
@@ -84,9 +84,11 @@ export default function DeveloperProfilePage() {
     vacation: 'bg-gray-500',
   };
 
-  const statusColors = {
+  const statusColors: Record<string, string> = {
     pending: 'bg-yellow-500',
+    staked: 'bg-blue-500',
     active: 'bg-green-500',
+    rejected: 'bg-red-800',
     suspended: 'bg-red-500',
   };
 
