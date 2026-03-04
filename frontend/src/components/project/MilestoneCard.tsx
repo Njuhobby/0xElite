@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { PROJECT_MANAGER_ABI, getProjectManagerAddress } from '@/config/contracts';
 
 interface Milestone {
   id: string;
@@ -16,6 +17,9 @@ interface Milestone {
   completedAt?: string;
   deliverableUrls?: string[];
   reviewNotes?: string;
+  onChainIndex?: number;
+  contractProjectId?: string;
+  usesOnchainMilestones?: boolean;
 }
 
 interface Props {
@@ -65,6 +69,31 @@ export default function MilestoneCard({ milestone, isClient, isDeveloper, onUpda
       setIsUpdating(false);
     },
   });
+
+  // On-chain milestone approval for milestone-based projects
+  const {
+    data: approveHash,
+    writeContract: approveOnChain,
+    isPending: isApprovingOnChain,
+    error: approveOnChainError,
+  } = useWriteContract();
+
+  const { isLoading: isApproveTxPending, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
+    hash: approveHash,
+  });
+
+  // When on-chain approval tx succeeds, refresh data
+  if (approveHash && isApproveSuccess && isUpdating) {
+    setIsUpdating(false);
+    setReviewNotes('');
+    onUpdate();
+  }
+
+  // Show on-chain error
+  if (approveOnChainError && isUpdating) {
+    setError(approveOnChainError.message);
+    setIsUpdating(false);
+  }
 
   const generateMessage = (action: string) => {
     const timestamp = Date.now();
@@ -148,6 +177,19 @@ Timestamp: ${timestamp}`;
   const handleApprove = () => {
     setError('');
     setIsUpdating(true);
+
+    // For on-chain milestone projects, call approveMilestone directly on-chain
+    if (milestone.usesOnchainMilestones && milestone.contractProjectId != null && milestone.onChainIndex != null) {
+      approveOnChain({
+        address: getProjectManagerAddress(),
+        abi: PROJECT_MANAGER_ABI,
+        functionName: 'approveMilestone',
+        args: [BigInt(milestone.contractProjectId), milestone.onChainIndex],
+      });
+      return;
+    }
+
+    // Fallback: backend-mediated approval for simple projects
     const message = generateMessage('Approve milestone completion');
     signMessage({ message });
   };
@@ -349,10 +391,16 @@ Timestamp: ${timestamp}`;
 
           <button
             onClick={handleApprove}
-            disabled={isUpdating}
+            disabled={isUpdating || isApprovingOnChain || isApproveTxPending}
             className="w-full py-3 bg-green-600 rounded-lg text-white font-semibold hover:bg-green-700 disabled:opacity-50"
           >
-            {isUpdating ? 'Approving...' : 'Approve & Mark as Completed'}
+            {isApprovingOnChain || isApproveTxPending
+              ? 'Confirming on-chain...'
+              : isUpdating
+              ? 'Approving...'
+              : milestone.usesOnchainMilestones
+              ? 'Approve On-Chain & Release Payment'
+              : 'Approve & Mark as Completed'}
           </button>
         </div>
       )}

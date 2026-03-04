@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { keccak256, encodePacked } from 'viem';
 
 interface Milestone {
   title: string;
@@ -13,6 +14,20 @@ interface Props {
   milestones: Milestone[];
   onChange: (milestones: Milestone[]) => void;
   totalBudget: number;
+}
+
+function computeHash(m: Milestone): string | null {
+  if (!m.title.trim() || !m.description.trim()) return null;
+  const filtered = m.deliverables.filter(d => d.trim());
+  if (filtered.length === 0) return null;
+  try {
+    return keccak256(encodePacked(
+      ['string', 'string', 'string'],
+      [m.title, m.description, JSON.stringify(filtered)]
+    ));
+  } catch {
+    return null;
+  }
 }
 
 export default function MilestoneManager({ milestones, onChange, totalBudget }: Props) {
@@ -159,6 +174,17 @@ export default function MilestoneManager({ milestones, onChange, totalBudget }: 
               <span className="text-gray-400 ml-2">USDC</span>
             </div>
           </div>
+
+          {/* On-Chain Hash Preview */}
+          {(() => {
+            const hash = computeHash(milestone);
+            return hash ? (
+              <div className="mt-4 p-3 bg-white/5 border border-white/10 rounded-lg">
+                <p className="text-gray-400 text-xs font-medium mb-1">On-Chain Details Hash</p>
+                <p className="text-gray-500 text-xs font-mono break-all">{hash}</p>
+              </div>
+            ) : null;
+          })()}
         </div>
       ))}
 
