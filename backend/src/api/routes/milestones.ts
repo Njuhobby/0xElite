@@ -160,9 +160,10 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch milestone
+    // Fetch milestone with V2 flag
     const milestoneResult = await db.query(
-      `SELECT m.*, p.client_address, p.assigned_developer, p.status as project_status
+      `SELECT m.*, p.client_address, p.assigned_developer, p.status as project_status,
+              p.uses_onchain_milestones, p.contract_project_id, m.on_chain_index
        FROM milestones m
        JOIN projects p ON m.project_id = p.id
        WHERE m.id = $1`,
@@ -218,6 +219,14 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Client can only approve/reject milestones in pending_review status',
+      });
+    }
+
+    // For V2 projects, block completion via backend — must use on-chain approveMilestone
+    if (milestone.uses_onchain_milestones && status === 'completed') {
+      return res.status(400).json({
+        error: 'V2_ONCHAIN_REQUIRED',
+        message: 'Use on-chain approveMilestone for V2 projects. Payment is handled atomically by the smart contract.',
       });
     }
 
@@ -356,6 +365,38 @@ router.put('/:id', async (req: Request, res: Response) => {
       `UPDATE milestones SET ${updates.join(', ')} WHERE id = $${paramCount}`,
       values
     );
+
+    // For V2 projects, relay status change to on-chain contract
+    if (milestone.uses_onchain_milestones && milestone.on_chain_index !== null && status !== 'completed') {
+      const milestoneStatusMap: Record<string, number> = {
+        pending: 0,
+        in_progress: 1,
+        pending_review: 2,
+        disputed: 4,
+      };
+
+      const onChainStatus = milestoneStatusMap[status];
+      if (onChainStatus !== undefined) {
+        try {
+          const tx = await projectManagerContract.updateMilestoneStatus(
+            milestone.contract_project_id,
+            milestone.on_chain_index,
+            onChainStatus
+          );
+          await tx.wait();
+
+          logger.info('Milestone status updated on-chain', {
+            milestoneId: id,
+            contractProjectId: milestone.contract_project_id,
+            onChainIndex: milestone.on_chain_index,
+            newStatus: status,
+          });
+        } catch (error) {
+          logger.error('Failed to update milestone status on-chain', { error, milestoneId: id });
+          // Don't fail the request — DB is already updated, on-chain update can be retried
+        }
+      }
+    }
 
     // If milestone completed, check if all project milestones are done
     if (status === 'completed') {

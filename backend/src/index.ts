@@ -12,6 +12,7 @@ import reviewsRouter from './api/routes/reviews';
 import disputesRouter from './api/routes/disputes';
 import adminRouter from './api/routes/admin';
 import { databaseConfig } from './config/database';
+import { startMilestoneListener } from './services/eventListeners/milestoneListener';
 
 dotenv.config();
 
@@ -34,15 +35,32 @@ if (!escrowVaultAddress) {
   throw new Error('ESCROW_VAULT_ADDRESS not configured in .env');
 }
 
-// ProjectManager contract ABI (minimal - just what we need)
+// ProjectManager contract ABI (V2 — includes milestones)
 const projectManagerAbi = [
+  // V1 functions
   'function createProject(uint256 _totalBudget) external returns (uint256)',
   'function assignDeveloper(uint256 _projectId, address _developer) external',
   'function updateProjectState(uint256 _projectId, uint8 _newState) external',
   'function getProject(uint256 _projectId) external view returns (tuple(uint256 projectId, address client, address assignedDeveloper, uint8 state, uint256 totalBudget, uint256 createdAt, uint256 activatedAt, uint256 completedAt))',
+  // V2 functions
+  'function createProjectWithMilestones(uint256 totalBudget, uint128[] milestoneBudgets, bytes32[] milestoneHashes) external returns (uint256)',
+  'function assignDevelopers(uint256 _projectId, address[] _developers) external',
+  'function approveMilestone(uint256 _projectId, uint8 _milestoneIndex) external',
+  'function updateMilestoneStatus(uint256 _projectId, uint8 _milestoneIndex, uint8 _newStatus) external',
+  'function getMilestone(uint256 _projectId, uint8 _index) external view returns (tuple(uint128 budget, bytes32 detailsHash, uint8 status))',
+  'function getMilestones(uint256 _projectId) external view returns (tuple(uint128 budget, bytes32 detailsHash, uint8 status)[])',
+  'function getProjectDevelopers(uint256 _projectId) external view returns (address[])',
+  'function isProjectDeveloper(uint256 _projectId, address _addr) external view returns (bool)',
+  'function version() external pure returns (string)',
+  // V1 events
   'event ProjectCreated(uint256 indexed projectId, address indexed client, uint256 totalBudget)',
   'event DeveloperAssigned(uint256 indexed projectId, address indexed developer)',
   'event ProjectStateChanged(uint256 indexed projectId, uint8 oldState, uint8 newState)',
+  // V2 events
+  'event MilestonesCreated(uint256 indexed projectId, uint8 count)',
+  'event MilestoneStatusChanged(uint256 indexed projectId, uint8 milestoneIndex, uint8 oldStatus, uint8 newStatus)',
+  'event MilestoneApproved(uint256 indexed projectId, uint8 milestoneIndex, uint256 developerPayment, uint256 platformFee)',
+  'event DevelopersAssigned(uint256 indexed projectId, address[] developers)',
 ];
 
 // EscrowVault contract ABI (minimal - just what we need for routes)
@@ -114,10 +132,20 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`✓ Server running on port ${PORT}`);
   console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`✓ CORS enabled for: ${process.env.ALLOWED_ORIGINS || 'http://localhost:3000'}`);
+
+  // Start milestone event listener
+  if (projectManagerAddress) {
+    try {
+      await startMilestoneListener(projectManagerAddress);
+      console.log('✓ Milestone event listener started');
+    } catch (error) {
+      console.error('Failed to start milestone event listener:', error);
+    }
+  }
 });
 
 export default app;

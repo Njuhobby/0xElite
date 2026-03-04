@@ -544,4 +544,215 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// =====================================================
+// POST /api/projects/register - Register V2 Project (after client creates on-chain)
+// =====================================================
+
+router.post('/register', async (req: Request, res: Response) => {
+  try {
+    const {
+      address, message, signature,
+      txHash, title, description, requiredSkills, totalBudget, milestones
+    } = req.body;
+
+    // Validation
+    if (!address || !message || !signature || !txHash) {
+      return res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Address, message, signature, and txHash required',
+      });
+    }
+
+    if (!title || !description || !Array.isArray(milestones) || milestones.length === 0) {
+      return res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Title, description, and milestones required',
+      });
+    }
+
+    // Verify signature
+    const isValidSignature = verifySignature(message, signature, address);
+    if (!isValidSignature) {
+      return res.status(401).json({
+        error: 'INVALID_SIGNATURE',
+        message: 'Wallet signature verification failed',
+      });
+    }
+
+    const clientAddress = address.toLowerCase();
+
+    // Extract contractProjectId from tx receipt
+    const provider = projectManagerContract.runner?.provider;
+    if (!provider) {
+      return res.status(500).json({
+        error: 'INTERNAL_ERROR',
+        message: 'Provider not available',
+      });
+    }
+
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      return res.status(400).json({
+        error: 'INVALID_TX',
+        message: 'Transaction receipt not found. Transaction may not be confirmed yet.',
+      });
+    }
+
+    const event = receipt.logs.find((log: any) => {
+      try {
+        const parsed = projectManagerContract.interface.parseLog(log);
+        return parsed?.name === 'ProjectCreated';
+      } catch (e) {
+        return false;
+      }
+    });
+
+    if (!event) {
+      return res.status(400).json({
+        error: 'INVALID_TX',
+        message: 'ProjectCreated event not found in transaction',
+      });
+    }
+
+    const parsedEvent = projectManagerContract.interface.parseLog(event);
+    const contractProjectId = parsedEvent.args.projectId.toString();
+
+    logger.info('Registering V2 project', {
+      contractProjectId,
+      client: clientAddress,
+      txHash,
+    });
+
+    // Ensure client record exists
+    await db.query(
+      `INSERT INTO clients (wallet_address)
+       VALUES ($1)
+       ON CONFLICT (wallet_address) DO NOTHING`,
+      [clientAddress]
+    );
+
+    await db.query(
+      `UPDATE clients
+       SET projects_created = projects_created + 1,
+           updated_at = NOW()
+       WHERE wallet_address = $1`,
+      [clientAddress]
+    );
+
+    // Create project in database with uses_onchain_milestones = true
+    const projectResult = await db.query(
+      `INSERT INTO projects (
+        client_address, title, description, required_skills, total_budget,
+        status, contract_project_id, uses_onchain_milestones, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, 'draft', $6, true, NOW(), NOW())
+      RETURNING *`,
+      [clientAddress, title, description, JSON.stringify(requiredSkills), totalBudget, contractProjectId]
+    );
+
+    const project = projectResult.rows[0];
+
+    // Create milestones with details_hash and on_chain_index
+    const createdMilestones = [];
+    for (let i = 0; i < milestones.length; i++) {
+      const milestone = milestones[i];
+      // Compute detailsHash matching on-chain: keccak256(abi.encodePacked(title, description, deliverables))
+      const detailsHash = ethers.keccak256(
+        ethers.solidityPacked(
+          ['string', 'string', 'string'],
+          [milestone.title, milestone.description, JSON.stringify(milestone.deliverables)]
+        )
+      );
+
+      const milestoneResult = await db.query(
+        `INSERT INTO milestones (
+          project_id, milestone_number, title, description, deliverables, budget,
+          status, details_hash, on_chain_index, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, NOW(), NOW())
+        RETURNING *`,
+        [
+          project.id,
+          i + 1,
+          milestone.title,
+          milestone.description,
+          JSON.stringify(milestone.deliverables),
+          milestone.budget,
+          detailsHash,
+          i
+        ]
+      );
+      createdMilestones.push(milestoneResult.rows[0]);
+    }
+
+    // Trigger auto-assignment
+    logger.info('Triggering auto-assignment for V2 project', { projectId: project.id });
+    const assignedDeveloper = await assignDeveloperToProject(db, projectManagerContract, project.id);
+
+    res.status(201).json({
+      id: project.id,
+      projectNumber: project.project_number,
+      clientAddress: project.client_address,
+      contractProjectId,
+      title: project.title,
+      description: project.description,
+      requiredSkills: project.required_skills,
+      totalBudget: project.total_budget,
+      status: assignedDeveloper ? 'active' : 'draft',
+      usesOnchainMilestones: true,
+      assignedDeveloper,
+      milestones: createdMilestones.map((m: any) => ({
+        id: m.id,
+        milestoneNumber: m.milestone_number,
+        title: m.title,
+        description: m.description,
+        deliverables: m.deliverables,
+        budget: m.budget,
+        status: m.status,
+        detailsHash: m.details_hash,
+        onChainIndex: m.on_chain_index,
+      })),
+      createdAt: project.created_at,
+    });
+  } catch (error: any) {
+    logger.error('Error registering V2 project', { error });
+    res.status(500).json({
+      error: 'INTERNAL_ERROR',
+      message: 'Failed to register project',
+    });
+  }
+});
+
+// =====================================================
+// GET /api/projects/hashes - Compute milestone hashes for frontend
+// =====================================================
+
+router.post('/hashes', async (req: Request, res: Response) => {
+  try {
+    const { milestones } = req.body;
+
+    if (!Array.isArray(milestones) || milestones.length === 0) {
+      return res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Milestones array required',
+      });
+    }
+
+    const hashes = milestones.map((m: any) => {
+      return ethers.keccak256(
+        ethers.solidityPacked(
+          ['string', 'string', 'string'],
+          [m.title, m.description, JSON.stringify(m.deliverables)]
+        )
+      );
+    });
+
+    res.json({ hashes });
+  } catch (error: any) {
+    logger.error('Error computing hashes', { error });
+    res.status(500).json({
+      error: 'INTERNAL_ERROR',
+      message: 'Failed to compute milestone hashes',
+    });
+  }
+});
+
 export default router;
