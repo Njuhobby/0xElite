@@ -31,6 +31,7 @@
 │   核心价值:                                                      │
 │   • DAO 验证的开发者会员制                                        │
 │   • 链上 Escrow 资金保护                                         │
+│   • 链上里程碑审批 → 原子付款                                     │
 │   • 智能匹配算法                                                 │
 │   • 争议仲裁机制                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -64,8 +65,8 @@
 │  ┌─────────────┐  │  │             │  │  └───────────┘  └───────────────┘  │
 │  │ REST API    │  │  │             │  │  ┌───────────────────────────────┐  │
 │  │ /developers │  │  │             │  │  │      ProjectManager           │  │
-│  │ /projects   │  │  │             │  │  └───────────────────────────────┘  │
-│  │ /escrow     │  │  │             │  │                                     │
+│  │ /projects   │  │  │             │  │  │  (milestones + payments)      │  │
+│  │ /escrow     │  │  │             │  │  └───────────────────────────────┘  │
 │  └─────────────┘  │  │             │  │                                     │
 │                   │  │             │  │                                     │
 │  ┌─────────────┐  │  │   Events    │  │                                     │
@@ -141,11 +142,11 @@
 │   │  • 质押 USDC (如 500 USDC)      │  │                                 │ │
 │   │                                 │  │                                 │ │
 │   │  状态流转:                       │  │  主要操作:                       │ │
-│   │  pending → active → suspended   │  │  • 发布项目                      │ │
+│   │  pending → active → suspended   │  │  • 链上创建项目+里程碑            │ │
 │   │                                 │  │  • 存入 Escrow                  │ │
-│   │  主要操作:                       │  │  • 审核 Milestone               │ │
-│   │  • 接受项目邀请                  │  │  • 释放资金                      │ │
-│   │  • 提交 Milestone               │  │  • 发起争议                      │ │
+│   │  主要操作:                       │  │  • 链上审批 Milestone → 付款     │ │
+│   │  • 接受项目邀请                  │  │  • 发起争议                      │ │
+│   │  • 提交 Milestone               │  │                                 │ │
 │   │  • 领取报酬                      │  │                                 │ │
 │   │                                 │  │                                 │ │
 │   └─────────────────────────────────┘  └─────────────────────────────────┘ │
@@ -157,7 +158,7 @@
 │   │  身份: 治理参与者                │  │  身份: 系统管理                  │ │
 │   │                                 │  │                                 │ │
 │   │  主要操作:                       │  │  主要操作:                       │ │
-│   │  • 参与争议仲裁 ✅               │  │  • 收取平台手续费                │ │
+│   │  • 参与争议仲裁 ✅               │  │  • 收取平台手续费 (链上自动)     │ │
 │   │  • 投票决策 (EliteToken 权重) ✅ │  │  • 维护系统运行                  │ │
 │   │  • 查看争议详情和证据 ✅         │  │  • Owner 裁决 (未达法定人数)     │ │
 │   │                                 │  │                                 │ │
@@ -234,16 +235,23 @@
 │                      Client Flow & Project Lifecycle                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│   Phase 1: Project Creation                                                 │
-│   ─────────────────────────                                                 │
+│   Phase 1: Project Creation (On-Chain)                                      │
+│   ────────────────────────────────────                                      │
 │   ┌───────────┐     ┌───────────┐     ┌───────────┐     ┌───────────┐     │
-│   │  Connect  │────►│  Create   │────►│  Define   │────►│  Submit   │     │
-│   │  Wallet   │     │  Project  │     │Milestones │     │  Project  │     │
+│   │  Connect  │────►│  Create   │────►│  Define   │────►│  Sign TX  │     │
+│   │  Wallet   │     │  Project  │     │Milestones │     │ On-Chain  │     │
 │   └───────────┘     └───────────┘     └───────────┘     └───────────┘     │
 │                                                               │             │
+│   Client wallet calls createProjectWithMilestones() directly  │             │
+│   Milestone detailsHash (keccak256) anchored on-chain         │             │
 │                                                               ▼             │
-│   Phase 2: Matching                                    status='open'        │
-│   ────────────────────                                        │             │
+│                                                        ┌───────────┐       │
+│                                                        │ Register  │       │
+│                                                        │ in Backend│       │
+│                                                        └─────┬─────┘       │
+│                                                              │             │
+│   Phase 2: Matching                                   status='open'        │
+│   ────────────────────                                       │             │
 │                          ┌───────────────────────────────────┐│             │
 │                          │      Matching Algorithm           ││             │
 │                          │  • Skills match                   │◄┘             │
@@ -254,8 +262,9 @@
 │                                         │                                   │
 │                                         ▼                                   │
 │                          ┌───────────────────────────────────┐              │
-│                          │   Developer Assigned              │              │
-│                          │   status='assigned'               │              │
+│                          │   Developers Assigned (on-chain)  │              │
+│                          │   assignDevelopers() - onlyOwner   │              │
+│                          │   status='active'                  │              │
 │                          └───────────────────────────────────┘              │
 │                                         │                                   │
 │   Phase 3: Escrow Deposit               ▼                                   │
@@ -275,10 +284,13 @@
 │   │                      Milestone Cycle (Repeat)                       │  │
 │   │                                                                     │  │
 │   │   ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐ │  │
-│   │   │ Developer │───►│  Client   │───►│  Client   │───►│   Funds   │ │  │
-│   │   │  Submits  │    │  Reviews  │    │ Approves  │    │ Released  │ │  │
-│   │   │   Work    │    │   Work    │    │           │    │           │ │  │
+│   │   │ Developer │───►│ Developer │───►│  Client   │───►│   Funds   │ │  │
+│   │   │  Starts   │    │  Submits  │    │ Approves  │    │ Released  │ │  │
+│   │   │  (API)    │    │  (API)    │    │ (On-Chain)│    │ (Atomic)  │ │  │
 │   │   └───────────┘    └───────────┘    └───────────┘    └───────────┘ │  │
+│   │   backend relays   backend relays   approveMilestone() on-chain    │  │
+│   │   to chain         to chain         → splits payment to devs      │  │
+│   │                                     → sends fee to treasury        │  │
 │   │                          │                                         │  │
 │   │                          ▼ (if rejected)                           │  │
 │   │                    ┌───────────┐                                   │  │
@@ -287,6 +299,8 @@
 │   │                    └───────────┘                                   │  │
 │   │                                                                     │  │
 │   └─────────────────────────────────────────────────────────────────────┘  │
+│                                         │                                   │
+│                          All milestones approved → auto-complete            │
 │                                         │                                   │
 │                                         ▼                                   │
 │   Phase 5: Completion           status='completed'                          │
@@ -308,15 +322,14 @@
 │                              Money Flow                                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│                                                                             │
-│   ┌──────────┐                                           ┌──────────┐      │
-│   │  Client  │                                           │Developer │      │
-│   │  Wallet  │                                           │  Wallet  │      │
-│   └────┬─────┘                                           └────▲─────┘      │
-│        │                                                      │            │
-│        │ deposit()                              release()     │            │
-│        │                                                      │            │
-│        ▼                                                      │            │
+│   ┌──────────┐                                     ┌──────────┐            │
+│   │  Client  │                                     │Developer │            │
+│   │  Wallet  │                                     │ Wallet(s)│            │
+│   └────┬─────┘                                     └────▲─────┘            │
+│        │                                                │                  │
+│        │ deposit()                      release()       │                  │
+│        │                               (per developer)  │                  │
+│        ▼                                                │                  │
 │   ┌─────────────────────────────────────────────────────────────────────┐  │
 │   │                         EscrowVault                                 │  │
 │   │  ┌─────────────────────────────────────────────────────────────┐   │  │
@@ -325,20 +338,28 @@
 │   │  │   Total Deposited: $10,000 USDC                              │   │  │
 │   │  │   ─────────────────────────────                              │   │  │
 │   │  │                                                              │   │  │
-│   │  │   Milestone 1: $3,000  ✅ Released → Developer               │   │  │
-│   │  │   Milestone 2: $3,000  ✅ Released → Developer               │   │  │
+│   │  │   Milestone 1: $3,000  ✅ Approved on-chain                  │   │  │
+│   │  │     → Dev A: $1,350 (release)                                │   │  │
+│   │  │     → Dev B: $1,350 (release)                                │   │  │
+│   │  │     → Treasury: $300 (releaseFee, 10%)                       │   │  │
+│   │  │                                                              │   │  │
+│   │  │   Milestone 2: $3,000  ✅ Approved on-chain                  │   │  │
 │   │  │   Milestone 3: $4,000  🔒 Locked (in progress)               │   │  │
 │   │  │                                                              │   │  │
-│   │  │   Platform Fee: 10% deducted on release                      │   │  │
+│   │  │   Platform Fee: platformFeeBps (链上配置, 默认 10%)            │   │  │
+│   │  │   Multi-Dev Split: 等额分配, 最后一个开发者获取 rounding dust  │   │  │
 │   │  │                                                              │   │  │
 │   │  └──────────────────────────────────────────────────────────────┘   │  │
 │   │                              │                                      │  │
-│   │                              │ collectFees()                        │  │
+│   │           approveMilestone() │ (triggered by client on-chain)       │  │
 │   │                              ▼                                      │  │
-│   │                       ┌─────────────┐                               │  │
-│   │                       │  Treasury   │                               │  │
-│   │                       │  (Platform) │                               │  │
-│   │                       └─────────────┘                               │  │
+│   │   ┌─────────────────────────────────────────────────────────────┐  │  │
+│   │   │  Atomic Payment (inside ProjectManager.approveMilestone):   │  │  │
+│   │   │  1. fee = budget × feeBps / 10000                           │  │  │
+│   │   │  2. devPay = budget - fee                                   │  │  │
+│   │   │  3. escrowVault.release(id, dev, amount) × N developers     │  │  │
+│   │   │  4. escrowVault.releaseFee(id, fee) → Treasury              │  │  │
+│   │   └─────────────────────────────────────────────────────────────┘  │  │
 │   │                                                                     │  │
 │   │   Dispute Flow:                                                     │  │
 │   │   ──────────────                                                    │  │
@@ -359,7 +380,7 @@
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │  StakeVault.sol                                                     │  │
+│   │  StakeVault.sol (UUPS Upgradeable)                                 │  │
 │   ├─────────────────────────────────────────────────────────────────────┤  │
 │   │  Purpose: 管理开发者质押                                              │  │
 │   │                                                                     │  │
@@ -375,13 +396,14 @@
 │   └─────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │  EscrowVault.sol                                                    │  │
+│   │  EscrowVault.sol (UUPS Upgradeable)                                │  │
 │   ├─────────────────────────────────────────────────────────────────────┤  │
 │   │  Purpose: 管理项目资金托管                                            │  │
 │   │                                                                     │  │
 │   │  Key Functions:                                                     │  │
 │   │  • deposit(projectId, amount)     - Client 存入项目资金              │  │
-│   │  • release(projectId, amount)     - 释放资金给 Developer             │  │
+│   │  • release(projectId, dev, amt)   - 释放资金给 Developer             │  │
+│   │  • releaseFee(projectId, fee)     - 释放手续费给 Treasury            │  │
 │   │  • freeze(projectId)              - 冻结资金 (争议时)                │  │
 │   │  • resolveDispute(projectId, clientShare, devShare) - 争议裁决       │  │
 │   │                                                                     │  │
@@ -393,14 +415,43 @@
 │   └─────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │  ProjectManager.sol (Optional)                                      │  │
+│   │  ProjectManager.sol (UUPS Upgradeable)                              │  │
 │   ├─────────────────────────────────────────────────────────────────────┤  │
-│   │  Purpose: 链上项目状态管理                                            │  │
+│   │  Purpose: 链上项目 + 里程碑管理, 里程碑审批即付款                      │  │
 │   │                                                                     │  │
-│   │  Key Functions:                                                     │  │
-│   │  • createProject(...)            - 创建项目                          │  │
-│   │  • assignDeveloper(...)          - 分配开发者                        │  │
-│   │  • completeMilestone(...)        - 完成里程碑                        │  │
+│   │  On-Chain Storage per Milestone:                                    │  │
+│   │  • budget (uint128, USDC 6 decimals)                                │  │
+│   │  • detailsHash (bytes32, keccak256 of title+desc+deliverables)      │  │
+│   │  • status (Pending/InProgress/PendingReview/Completed/Disputed)     │  │
+│   │                                                                     │  │
+│   │  Key Functions (Simple Projects):                                   │  │
+│   │  • createProject(budget)             - 创建简单项目                   │  │
+│   │  • assignDeveloper(id, dev)          - 分配单个开发者 (onlyOwner)    │  │
+│   │  • updateProjectState(id, state)     - 更新项目状态 (onlyOwner)     │  │
+│   │                                                                     │  │
+│   │  Key Functions (On-Chain Milestones):                               │  │
+│   │  • createProjectWithMilestones(      - Client 创建项目+里程碑       │  │
+│   │      budget, budgets[], hashes[])      (直接链上调用, 1-20 个)      │  │
+│   │  • assignDevelopers(id, devs[])      - 分配多开发者 (onlyOwner)     │  │
+│   │  • updateMilestoneStatus(id,idx,s)   - 更新里程碑状态 (onlyOwner)   │  │
+│   │  • approveMilestone(id, idx)         - Client 链上审批 → 原子付款   │  │
+│   │                                                                     │  │
+│   │  Payment Logic (approveMilestone):                                  │  │
+│   │  • fee = budget × platformFeeBps / 10000                            │  │
+│   │  • devPayment = budget - fee (等额分配给多开发者)                     │  │
+│   │  • escrowVault.release() per developer                              │  │
+│   │  • escrowVault.releaseFee() → Treasury                              │  │
+│   │  • All milestones done → auto-complete project                      │  │
+│   │                                                                     │  │
+│   │  Config: platformFeeBps (链上, max 5000=50%), treasury, escrowVault  │  │
+│   │                                                                     │  │
+│   │  Events:                                                            │  │
+│   │  • ProjectCreated(projectId, client, totalBudget)                   │  │
+│   │  • MilestonesCreated(projectId, count)                              │  │
+│   │  • MilestoneApproved(projectId, idx, devPayment, platformFee)       │  │
+│   │  • MilestoneStatusChanged(projectId, idx, oldStatus, newStatus)     │  │
+│   │  • DevelopersAssigned(projectId, developers[])                      │  │
+│   │  • ProjectStateChanged(projectId, oldState, newState)               │  │
 │   └─────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────┐  │
@@ -462,34 +513,38 @@
 │                        Entity Relationship Diagram                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│   ┌───────────────┐           ┌───────────────┐          ┌───────────────┐ │
-│   │   developers  │           │   projects    │          │    clients    │ │
-│   ├───────────────┤           ├───────────────┤          ├───────────────┤ │
-│   │ wallet_address│◄──────────│ assigned_dev  │          │ wallet_address│ │
-│   │ email         │     1:N   │ client_address│─────────►│               │ │
-│   │ github        │           │ title         │    N:1   │               │ │
-│   │ skills[]      │           │ description   │          │               │ │
-│   │ hourly_rate   │           │ budget        │          └───────────────┘ │
-│   │ availability  │           │ status        │                            │
-│   │ stake_amount  │           │ skills_req[]  │                            │
-│   │ status        │           │ created_at    │                            │
-│   └───────────────┘           └───────┬───────┘                            │
-│                                       │                                     │
-│                                       │ 1:N                                 │
-│                                       ▼                                     │
-│                               ┌───────────────┐                            │
-│                               │  milestones   │                            │
-│                               ├───────────────┤                            │
-│                               │ project_id    │                            │
-│                               │ title         │                            │
-│                               │ description   │                            │
-│                               │ budget        │                            │
-│                               │ status        │                            │
-│                               │ due_date      │                            │
-│                               └───────┬───────┘                            │
-│                                       │                                     │
-│   ┌───────────────┐                   │ 1:N                                │
-│   │escrow_deposits│                   ▼                                    │
+│   ┌───────────────┐           ┌───────────────────┐    ┌───────────────┐   │
+│   │   developers  │           │     projects      │    │    clients    │   │
+│   ├───────────────┤           ├───────────────────┤    ├───────────────┤   │
+│   │ wallet_address│◄──────────│ assigned_dev      │    │ wallet_address│   │
+│   │ email         │     1:N   │ client_address    │───►│               │   │
+│   │ github        │           │ title             │N:1 │               │   │
+│   │ skills[]      │           │ description       │    └───────────────┘   │
+│   │ hourly_rate   │           │ budget            │                        │
+│   │ availability  │           │ status            │                        │
+│   │ stake_amount  │           │ skills_req[]      │                        │
+│   │ status        │           │ uses_onchain_ms   │  (on-chain milestone?) │
+│   └───────────────┘           │ contract_proj_id  │  (on-chain project ID) │
+│                               │ created_at        │                        │
+│                               └─────────┬─────────┘                        │
+│                                         │                                   │
+│                                         │ 1:N                               │
+│                                         ▼                                   │
+│                               ┌───────────────────┐                        │
+│                               │    milestones     │                        │
+│                               ├───────────────────┤                        │
+│                               │ project_id        │                        │
+│                               │ title             │                        │
+│                               │ description       │                        │
+│                               │ budget            │                        │
+│                               │ status            │                        │
+│                               │ details_hash      │  (keccak256, on-chain) │
+│                               │ on_chain_index    │  (0-based index)       │
+│                               │ due_date          │                        │
+│                               └─────────┬─────────┘                        │
+│                                         │                                   │
+│   ┌───────────────┐                     │ 1:N                              │
+│   │escrow_deposits│                     ▼                                  │
 │   ├───────────────┤           ┌───────────────┐                            │
 │   │ project_id    │◄──────────│payment_history│                            │
 │   │ total_deposit │     1:N   ├───────────────┤                            │
@@ -562,9 +617,9 @@
 │   ┌──────┐  match   ┌──────────┐  deposit  ┌────────┐  done   ┌──────────┐ │
 │   │ open │─────────►│ assigned │──────────►│ active │────────►│completed │ │
 │   └──────┘          └──────────┘           └────────┘         └──────────┘ │
-│       │                  │                      │                          │
-│       │ timeout          │ reject               │ dispute                  │
-│       ▼                  ▼                      ▼                          │
+│       │                  │                      │          (auto on all     │
+│       │ timeout          │ reject               │ dispute   milestones     │
+│       ▼                  ▼                      ▼           approved)      │
 │   ┌──────────┐      ┌──────────┐          ┌──────────┐                    │
 │   │cancelled │      │cancelled │          │ disputed │                    │
 │   └──────────┘      └──────────┘          └──────────┘                    │
@@ -577,20 +632,21 @@
 │                                           │cancelled │                     │
 │                                           └──────────┘                     │
 │                                                                             │
-│   Milestone Status:                                                         │
-│   ────────────────                                                          │
+│   Milestone Status (On-Chain):                                              │
+│   ────────────────────────────                                              │
 │                                                                             │
 │   ┌─────────┐  start   ┌─────────────┐  submit  ┌────────────────┐         │
-│   │ pending │─────────►│ in_progress │─────────►│ pending_review │         │
+│   │ Pending │─────────►│ InProgress  │─────────►│ PendingReview  │         │
 │   └─────────┘          └─────────────┘          └────────────────┘         │
-│                                                         │                   │
-│                              ┌───────────────┬──────────┴──────────┐       │
-│                              │               │                     │       │
-│                              ▼               ▼                     ▼       │
-│                        ┌──────────┐   ┌───────────┐        ┌──────────┐   │
-│                        │ approved │   │ rejected  │        │ disputed │   │
-│                        │ (paid)   │   │(revision) │        │          │   │
-│                        └──────────┘   └───────────┘        └──────────┘   │
+│   (backend relays       (backend relays           │                        │
+│    updateMilestone       updateMilestone           │ approveMilestone()     │
+│    Status)               Status)                   │ (client, on-chain)     │
+│                                                    ▼                        │
+│                              ┌───────────┐   ┌──────────┐                  │
+│                              │ Disputed  │   │Completed │                  │
+│                              └───────────┘   │(+ atomic │                  │
+│                                              │ payment) │                  │
+│                                              └──────────┘                  │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -614,12 +670,17 @@
 │                                                                             │
 │   Projects API (/api/projects)                                              │
 │   ───────────────────────────                                               │
-│   POST   /                      创建新项目                                   │
+│   POST   /                      创建新项目 (off-chain 简单项目)              │
+│   POST   /register              注册链上项目 (前端 TX 确认后调用)             │
 │   GET    /                      获取项目列表                                 │
 │   GET    /:id                   获取项目详情                                 │
 │   PUT    /:id                   更新项目                                     │
-│   POST   /:id/milestones        添加里程碑                                   │
-│   PUT    /:id/milestones/:mid   更新里程碑状态                               │
+│                                                                             │
+│   Milestones API (/api/milestones)                                          │
+│   ────────────────────────────────                                          │
+│   POST   /:projectId/milestones 添加里程碑                                   │
+│   PUT    /:id                   更新里程碑状态 (start/submit/approve)        │
+│                                 链上项目 approve 返回 400 (需链上操作)        │
 │                                                                             │
 │   Escrow API (/api/escrow)                                                  │
 │   ────────────────────────                                                  │
@@ -630,11 +691,6 @@
 │   ─────────────────────────                                                 │
 │   POST   /                      注册/更新客户资料                             │
 │   GET    /:address              获取客户详情                                 │
-│                                                                             │
-│   Milestones API (/api/milestones)                                          │
-│   ────────────────────────────────                                          │
-│   POST   /:projectId/milestones 添加里程碑                                   │
-│   PUT    /:id                   更新里程碑状态 (approve/reject/submit)        │
 │                                                                             │
 │   Matching API (/api/matching)                                              │
 │   ──────────────────────────                                                │
@@ -726,8 +782,21 @@
 │   • Client settings page ✅                                                 │
 │   • Auto-redirect for registered clients ✅                                 │
 │                                                                             │
+│   RFC-008: On-Chain Milestones                                              │
+│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% ✅      │
+│   [██████████████████████████████████████████████████]                      │
+│   • ProjectManager contract with on-chain milestones (78 tests) ✅         │
+│   • createProjectWithMilestones + approveMilestone + multi-dev split ✅    │
+│   • Database migration 007 (details_hash, on_chain_index) ✅               │
+│   • Milestone event listener (milestoneListener.ts) ✅                     │
+│   • Backend route updates (register endpoint, V2 milestone flow) ✅        │
+│   • Frontend: client calls contract directly for create + approve ✅       │
+│   • Frontend: MilestoneCard on-chain approval + MilestoneManager hash ✅   │
+│   • Frontend: contracts.ts with PROJECT_MANAGER_ABI ✅                     │
+│   • Remaining: contract deployment, E2E testing                            │
+│                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│   Overall Progress:  ~95%                                                   │
+│   Overall Progress:  ~97%                                                   │
 │   [████████████████████████████████████████████████░░]                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -778,6 +847,7 @@
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_STAKE_VAULT_ADDRESS=0x...
 NEXT_PUBLIC_ESCROW_VAULT_ADDRESS=0x...
+NEXT_PUBLIC_PROJECT_MANAGER_ADDRESS=0x...
 NEXT_PUBLIC_USDC_ADDRESS=0x...
 NEXT_PUBLIC_DISPUTE_DAO_ADDRESS=0x...
 NEXT_PUBLIC_ELITE_TOKEN_ADDRESS=0x...
@@ -787,6 +857,7 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/oxelite
 RPC_URL=https://...
 STAKE_VAULT_ADDRESS=0x...
 ESCROW_VAULT_ADDRESS=0x...
+PROJECT_MANAGER_ADDRESS=0x...
 DISPUTE_DAO_ADDRESS=0x...
 ELITE_TOKEN_ADDRESS=0x...
 ```
@@ -810,63 +881,80 @@ ELITE_TOKEN_ADDRESS=0x...
 │   │   │   ├── projects/page.tsx       #   Projects list + create
 │   │   │   ├── projects/[id]/page.tsx  #   Project detail + milestones
 │   │   │   └── settings/page.tsx       #   Settings
+│   │   ├── projects/create/page.tsx    # Project creation (on-chain TX)
 │   │   └── disputes/                   # DAO Arbitration (Spec 4)
 │   │       ├── page.tsx                #   Disputes list + filters
 │   │       └── [id]/page.tsx           #   Dispute detail + evidence + voting
-│   └── src/components/
-│       ├── ConnectWallet.tsx
-│       ├── developer/
-│       │   ├── StakeFlow.tsx
-│       │   └── EditProfileModal.tsx
-│       ├── client/
-│       │   ├── EditClientProfileModal.tsx
-│       │   └── CreateProjectModal.tsx
-│       ├── reviews/
-│       │   ├── RatingStars.tsx
-│       │   ├── ReviewCard.tsx
-│       │   ├── ReviewList.tsx
-│       │   └── SubmitReviewModal.tsx
-│       └── disputes/
-│           ├── DisputeStatusBadge.tsx
-│           └── DisputeCard.tsx
+│   └── src/
+│       ├── config/
+│       │   └── contracts.ts            # PROJECT_MANAGER_ABI + addresses
+│       └── components/
+│           ├── ConnectWallet.tsx
+│           ├── developer/
+│           │   ├── StakeFlow.tsx
+│           │   └── EditProfileModal.tsx
+│           ├── client/
+│           │   ├── EditClientProfileModal.tsx
+│           │   └── CreateProjectModal.tsx
+│           ├── project/
+│           │   ├── MilestoneCard.tsx    # On-chain approve + status display
+│           │   └── MilestoneManager.tsx # Hash preview + milestone editor
+│           ├── reviews/
+│           │   ├── RatingStars.tsx
+│           │   ├── ReviewCard.tsx
+│           │   ├── ReviewList.tsx
+│           │   └── SubmitReviewModal.tsx
+│           └── disputes/
+│               ├── DisputeStatusBadge.tsx
+│               └── DisputeCard.tsx
 │
 ├── backend/
 │   ├── src/api/routes/
 │   │   ├── developers.ts
 │   │   ├── clients.ts
-│   │   ├── projects.ts
-│   │   ├── milestones.ts
+│   │   ├── projects.ts               # POST /register for on-chain projects
+│   │   ├── milestones.ts             # V2: blocks approve for on-chain projects
 │   │   ├── escrow.ts
 │   │   ├── reviews.ts
-│   │   └── disputes.ts             # Spec 4
+│   │   └── disputes.ts               # Spec 4
 │   ├── src/services/
 │   │   ├── matchingAlgorithm.ts
 │   │   ├── escrowEventListener.ts
-│   │   ├── votingPowerSync.ts       # Spec 4
+│   │   ├── votingPowerSync.ts         # Spec 4
 │   │   └── eventListeners/
-│   │       └── disputeListener.ts   # Spec 4
+│   │       ├── milestoneListener.ts   # RFC-008: MilestoneApproved sync
+│   │       └── disputeListener.ts     # Spec 4
 │   ├── src/types/
 │   │   ├── developer.ts
 │   │   ├── client.ts
 │   │   ├── review.ts
-│   │   └── dispute.ts              # Spec 4
+│   │   └── dispute.ts                # Spec 4
 │   └── src/db/migrations/
 │       ├── 001_create_developers_table.sql
 │       ├── 002_create_project_tables.sql
 │       ├── 003_create_escrow_tables.sql
 │       ├── 004_create_reviews_table.sql
-│       └── 005_create_dispute_tables.sql  # Spec 4
+│       ├── 005_create_dispute_tables.sql  # Spec 4
+│       └── 007_add_onchain_milestone_fields.sql  # RFC-008
 │
 ├── contracts/
 │   ├── contracts/
 │   │   ├── StakeVault.sol
 │   │   ├── EscrowVault.sol
-│   │   ├── ProjectManager.sol
-│   │   ├── EliteToken.sol           # Spec 4 (soulbound ERC20Votes)
-│   │   └── DisputeDAO.sol           # Spec 4 (DAO arbitration)
-│   └── test/
-│       ├── EliteToken.test.js       # 23 tests
-│       └── DisputeDAO.test.js       # 52 tests
+│   │   ├── ProjectManager.sol         # On-chain milestones + payments
+│   │   ├── EliteToken.sol             # Spec 4 (soulbound ERC20Votes)
+│   │   └── DisputeDAO.sol             # Spec 4 (DAO arbitration)
+│   ├── test/
+│   │   ├── ProjectManager.test.js     # 78 tests (milestones + payments)
+│   │   ├── EliteToken.test.js         # 23 tests
+│   │   └── DisputeDAO.test.js         # 52 tests
+│   └── scripts/
+│       ├── deploy.ts                  # Full deployment (all contracts)
+│       └── upgrade.ts                 # Generic UUPS upgrade script
+│
+├── docs/
+│   └── RFC/
+│       └── RFC-008-onchain-milestones.md  # On-chain milestone design
 │
 └── specs/
     ├── capabilities/
@@ -885,10 +973,13 @@ ELITE_TOKEN_ADDRESS=0x...
     │   ├── stake-vault-contract/
     │   ├── escrow-vault-contract/
     │   ├── escrow-event-listener/
-    │   ├── project-manager-contract/
+    │   ├── project-manager-contract/  # Includes V2 milestone spec
     │   └── matching-algorithm/
-    └── changes/archive/                # Archived change proposals
-        └── add-dao-arbitration/        # Spec 4 (archived)
+    ├── data-models/
+    │   ├── project/                   # uses_onchain_milestones, contract_project_id
+    │   └── milestone/                 # details_hash, on_chain_index
+    └── changes/archive/              # Archived change proposals
+        └── add-dao-arbitration/      # Spec 4 (archived)
 ```
 
 ---
@@ -896,12 +987,12 @@ ELITE_TOKEN_ADDRESS=0x...
 ## Next Steps
 
 1. **Deploy Contracts** - 部署 StakeVault, EscrowVault, ProjectManager, EliteToken, DisputeDAO 到测试网
-2. **Configure Addresses** - 在 .env 中配置合约地址 (包括 EliteToken, DisputeDAO)
-3. **E2E Integration Testing** - 端到端测试完整争议仲裁生命周期
-4. **Voting Power Sync** - 部署后运行 votingPowerSync 同步开发者投票权
-5. **Gas Optimization** - 合约 gas 优化和安全审计
-6. **Frontend Build Fix** - 修复 projects/create wagmi v3 API 兼容性问题
+2. **Configure Addresses** - 在 .env 中配置合约地址 (包括 ProjectManager)
+3. **Run Database Migration 007** - 添加 details_hash, on_chain_index, uses_onchain_milestones 字段
+4. **E2E Integration Testing** - 端到端测试: 链上创建项目 → 存入 escrow → 开发 → 链上审批付款
+5. **Voting Power Sync** - 部署后运行 votingPowerSync 同步开发者投票权
+6. **Gas Optimization** - 合约 gas 优化和安全审计
 
 ---
 
-*Last updated: February 23, 2026*
+*Last updated: March 4, 2026*
