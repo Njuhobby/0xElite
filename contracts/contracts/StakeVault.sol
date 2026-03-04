@@ -47,6 +47,7 @@ contract StakeVault is
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
+        // call in implementation contract's constructor, so attackers won't be able to reinitialize the contract
         _disableInitializers();
     }
 
@@ -55,7 +56,10 @@ contract StakeVault is
      * @param _stakeToken Address of USDC token contract
      * @param _requiredStake Initial required stake amount (e.g., 150 * 10^6 for 150 USDC)
      */
-    function initialize(address _stakeToken, uint256 _requiredStake) public initializer {
+    function initialize(
+        address _stakeToken,
+        uint256 _requiredStake
+    ) public initializer {
         require(_stakeToken != address(0), "Invalid token address");
         require(_requiredStake > 0, "Required stake must be positive");
 
@@ -72,7 +76,9 @@ contract StakeVault is
      * @param newImplementation Address of new implementation contract
      * @dev Only owner can upgrade
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 
     /// @notice Stake USDC to become a developer member
     /// @param amount Amount of USDC to stake (first stake must be >= requiredStake)
@@ -84,7 +90,10 @@ contract StakeVault is
             require(amount >= requiredStake, "Amount below required stake");
         }
 
-        require(stakeToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        require(
+            stakeToken.transferFrom(msg.sender, address(this), amount),
+            "Transfer failed"
+        );
 
         stakes[msg.sender] += amount;
         stakedAt[msg.sender] = block.timestamp;
