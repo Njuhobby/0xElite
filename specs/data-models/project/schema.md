@@ -39,10 +39,36 @@ Cannot approve milestones unless:
 - Escrow deposit must equal total_budget
 - Project completion releases any remaining escrow to client
 
+---
+
+## On-Chain Milestone Fields
+
+### New Fields (Migration 007)
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| `uses_onchain_milestones` | BOOLEAN | NOT NULL DEFAULT false | Whether this project uses on-chain milestone flow |
+| `contract_project_id` | BIGINT | NULL | On-chain project ID from ProjectManager contract (set after `createProjectWithMilestones` tx) |
+
+### On-Chain vs Off-Chain Projects
+
+**Off-chain projects** (`uses_onchain_milestones = false`):
+- Backend creates project and milestones in DB only
+- Backend mediates milestone approval and triggers payment via service wallet
+- Single developer assigned via `assignDeveloper()`
+
+**On-chain projects** (`uses_onchain_milestones = true`):
+- Client wallet calls `createProjectWithMilestones()` directly on-chain
+- `contract_project_id` stored from `ProjectCreated` event in tx receipt
+- Client approves milestones on-chain via `approveMilestone()` (atomic payment)
+- Multi-developer support via `assignDevelopers()`
+- Backend relays non-payment status transitions (`updateMilestoneStatus`)
+
 ## Related Specs
 
 - **Capabilities**: `capabilities/escrow-management/spec.md`, `capabilities/project-management/spec.md`
-- **Data Models**: `data-models/escrow/schema.md`
+- **Data Models**: `data-models/escrow/schema.md`, `data-models/milestone/schema.md`
+- **RFCs**: `docs/RFC/RFC-008-onchain-milestones.md`
 
 ## Validation Rules
 

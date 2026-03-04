@@ -257,9 +257,109 @@ contract ProjectManager is Ownable, ReentrancyGuard {
 - Projects stuck in Draft > 24 hours → no available developers
 - Unauthorized state change attempts → security issue
 
+---
+
+## V2: On-Chain Milestones
+
+### Motivation
+
+Move milestone definitions and approval on-chain to eliminate centralized trust in payment-critical data. See [RFC-008](../../../docs/RFC/RFC-008-onchain-milestones.md) for full rationale.
+
+### New Storage (appended after V1 for layout compatibility)
+
+```solidity
+enum MilestoneStatus { Pending, InProgress, PendingReview, Completed, Disputed }
+
+struct Milestone {
+    uint128 budget;          // USDC amount (6 decimals)
+    bytes32 detailsHash;     // keccak256(abi.encodePacked(title, description, deliverables))
+    MilestoneStatus status;
+}
+
+IEscrowVault public escrowVault;
+uint16 public platformFeeBps;          // e.g. 1000 = 10%
+address public treasury;
+
+mapping(uint256 => mapping(uint8 => Milestone)) public milestones;
+mapping(uint256 => uint8) public milestoneCount;
+mapping(uint256 => address[]) public projectDevelopers;
+```
+
+### Initialization
+
+`initialize(address initialOwner, address _escrowVault, address _treasury, uint16 _feeBps)` — called once via UUPS proxy deployment. Sets contract owner, escrow vault reference, treasury address, and platform fee in basis points.
+
+### New Functions
+
+| Function | Access | Description |
+|----------|--------|-------------|
+| `createProjectWithMilestones(uint256, uint128[], bytes32[])` | public | Client creates project + milestones on-chain |
+| `assignDevelopers(uint256, address[])` | onlyOwner | Backend assigns developers, Draft→Active |
+| `approveMilestone(uint256, uint8)` | client only | Client approves, triggers atomic payment split |
+| `updateMilestoneStatus(uint256, uint8, MilestoneStatus)` | onlyOwner | Backend updates milestone status |
+| `getMilestone(uint256, uint8)` | view | Get single milestone |
+| `getMilestones(uint256)` | view | Get all milestones for a project |
+| `getProjectDevelopers(uint256)` | view | Get developer list |
+| `isProjectDeveloper(uint256, address)` | view | Check developer membership |
+| `setPlatformFeeBps(uint16)` | onlyOwner | Update fee (max 5000 = 50%) |
+| `setTreasury(address)` | onlyOwner | Update treasury |
+| `setEscrowVault(address)` | onlyOwner | Update escrow reference |
+
+### `createProjectWithMilestones` Validation
+
+- 1–20 milestones allowed (reverts with `NoMilestones` or `TooManyMilestones`)
+- `milestoneBudgets.length` must equal `milestoneHashes.length` (reverts with `BudgetMismatch`)
+- Sum of milestone budgets must equal `totalBudget` (reverts with `BudgetMismatch`)
+- Each individual milestone budget must be > 0 (reverts with `BudgetMismatch`)
+- `totalBudget` must be > 0
+
+### New Events
+
+```solidity
+event MilestonesCreated(uint256 indexed projectId, uint8 count);
+event MilestoneStatusChanged(uint256 indexed projectId, uint8 milestoneIndex, MilestoneStatus oldStatus, MilestoneStatus newStatus);
+event MilestoneApproved(uint256 indexed projectId, uint8 milestoneIndex, uint256 developerPayment, uint256 platformFee);
+event DevelopersAssigned(uint256 indexed projectId, address[] developers);
+event PlatformFeeBpsUpdated(uint16 oldBps, uint16 newBps);
+```
+
+### Milestone Lifecycle
+
+```
+Pending → InProgress → PendingReview → Completed
+                ↓              ↓
+             Disputed      Disputed
+```
+
+- `Pending → InProgress`: Backend calls `updateMilestoneStatus` when developer starts work
+- `InProgress → PendingReview`: Backend calls `updateMilestoneStatus` when developer submits
+- `PendingReview → Completed`: Client calls `approveMilestone` directly (payment trigger)
+- Any → `Disputed`: Backend calls `updateMilestoneStatus` for dispute
+
+### Multi-Developer Payment Split
+
+When `approveMilestone` is called:
+1. Require `msg.sender == project.client` and milestone status == `PendingReview`
+2. Calculate `platformFee = budget * platformFeeBps / 10000`
+3. Calculate `totalDevPayment = budget - platformFee`
+4. Split `totalDevPayment` equally among `projectDevelopers[]`: each gets `totalDevPayment / numDevs`
+5. Last developer receives remainder (`totalDevPayment - perDev * (numDevs - 1)`) to ensure full distribution of rounding dust
+6. Call `escrowVault.release(projectId, developer, amount)` per developer
+7. Call `escrowVault.releaseFee(projectId, platformFee)` for treasury
+8. Mark milestone status as `Completed`
+
+### Auto-Completion
+
+After each milestone approval, the contract checks whether all milestones for the project are now `Completed`. If so, it automatically transitions the project state to `Completed` and emits `ProjectStateChanged`. No separate transaction is needed.
+
+### V1 Backward Compatibility
+
+V1 functions (`createProject`, `assignDeveloper`, `updateProjectState`) remain unchanged. V1 projects (where `milestoneCount == 0`) continue working through the backend-mediated flow.
+
 ## Related Specs
 
-- **Capabilities**: `capabilities/project-management/spec.md`
-- **Data Models**: `data-models/project/schema.md`
+- **Capabilities**: `capabilities/project-management/spec.md`, `capabilities/escrow-management/spec.md`
+- **Data Models**: `data-models/project/schema.md`, `data-models/milestone/schema.md`
 - **APIs**: `api/project-management/spec.md`
 - **Architecture**: `architecture/matching-algorithm/spec.md`
+- **RFCs**: `docs/RFC/RFC-008-onchain-milestones.md`

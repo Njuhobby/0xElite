@@ -183,8 +183,47 @@ The system SHALL synchronize escrow state by listening to blockchain events from
 - **AND** the system reprocesses any missed events
 - **AND** the system ensures no duplicate processing
 
+---
+
+## V2: On-Chain Milestone Approval
+
+### Requirement: Client Approves Milestone On-Chain
+
+For V2 projects (`uses_onchain_milestones = true`), the client approves milestones by calling `approveMilestone()` directly on the ProjectManager contract. The backend no longer mediates payment.
+
+#### Scenario: Client approves V2 milestone on-chain
+
+- **WHEN** a client calls `approveMilestone(projectId, milestoneIndex)` on ProjectManager V2
+- **AND** the milestone status is `PendingReview` and `msg.sender == project.client`
+- **THEN** the contract calculates `platformFee = budget * platformFeeBps / 10000`
+- **AND** the contract calculates `devPayment = budget - platformFee`
+- **AND** the contract splits `devPayment` equally among `projectDevelopers[]`
+- **AND** the contract calls `escrowVault.release(projectId, developer, shareAmount)` for each developer
+- **AND** the contract calls `escrowVault.releaseFee(projectId, platformFee)` for treasury
+- **AND** the contract emits `MilestoneApproved(projectId, milestoneIndex, devPayment, platformFee)`
+- **AND** the backend event listener syncs the DB: `status='completed'`, `payment_amount`, `platform_fee`, `paid_at`
+
+#### Scenario: All V2 milestones completed
+
+- **WHEN** the last milestone of a V2 project is approved on-chain
+- **THEN** the contract automatically sets project state to `Completed`
+- **AND** the contract emits `ProjectStateChanged(projectId, Active, Completed)`
+- **AND** the backend event listener updates project DB status and developer/client stats
+
+### Requirement: Platform Fee On-Chain
+
+For V2 projects, platform fee is a single configurable rate (`platformFeeBps`) stored on-chain, not tiered by client history. Tiered logic can be added later via a fee oracle without upgrading the contract.
+
+#### Scenario: Fee rate configuration
+
+- **WHEN** the owner calls `setPlatformFeeBps(1500)` (15%)
+- **THEN** all subsequent milestone approvals use 15% fee rate
+- **AND** the contract emits `PlatformFeeBpsUpdated(oldBps, 1500)`
+- **AND** the maximum allowed fee is 5000 (50%)
+
 ## Related Specs
 
 - **Data Models**: `data-models/escrow/schema.md`, `data-models/payment-history/schema.md`, `data-models/project/schema.md`, `data-models/milestone/schema.md`
 - **APIs**: `api/escrow-management/spec.md`
 - **Architecture**: `architecture/escrow-vault-contract/spec.md`, `architecture/escrow-event-listener/spec.md`
+- **RFCs**: `docs/RFC/RFC-008-onchain-milestones.md`

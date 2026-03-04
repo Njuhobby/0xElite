@@ -72,8 +72,43 @@ If payment fails:
 - **MUST** have `deliverable_urls` when transitioning to `pending_review`
 - **SHOULD** record timestamps for each status change
 
+---
+
+## V2: On-Chain Milestone Fields
+
+### New Fields (Migration 007)
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| `details_hash` | VARCHAR(66) | NULL | keccak256 hash of milestone details stored on-chain for verification |
+| `on_chain_index` | SMALLINT | NULL | Index of this milestone in the on-chain milestones mapping (0-based) |
+
+### New Project Field
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| `uses_onchain_milestones` | BOOLEAN | NOT NULL DEFAULT false | Whether this project uses V2 on-chain milestone flow |
+
+### Index
+
+```sql
+CREATE INDEX idx_milestones_on_chain ON milestones(project_id, on_chain_index);
+```
+
+### V2 Completion Flow
+
+For projects with `uses_onchain_milestones = true`:
+1. Client calls `approveMilestone(contractProjectId, milestoneIndex)` directly on-chain
+2. Contract atomically calculates fee, splits payment to developers, sends fee to treasury
+3. Contract emits `MilestoneApproved` event
+4. Backend event listener catches event and updates DB: `status='completed'`, `payment_amount`, `platform_fee`, `paid_at`, `completed_at`
+5. If all milestones completed, contract auto-sets project state to Completed
+
+Backend milestone approval endpoint returns 400 for V2 projects with message "Use on-chain approveMilestone for V2 projects".
+
 ## Related Specs
 
-- **Capabilities**: `capabilities/project-management/spec.md`
+- **Capabilities**: `capabilities/project-management/spec.md`, `capabilities/escrow-management/spec.md`
 - **APIs**: `api/project-management/spec.md`
 - **Data Models**: `data-models/project/schema.md`
+- **RFCs**: `docs/RFC/RFC-008-onchain-milestones.md`
