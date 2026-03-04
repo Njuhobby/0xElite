@@ -8,7 +8,8 @@
 
 - **Curate membership** - Developers stake 150 USDC to prove commitment
 - **Wallet-based identity** - Pure Web3 authentication, no passwords
-- **On-chain verification** - Smart contracts manage stakes and reputation
+- **On-chain verification** - Smart contracts manage stakes, escrow, and disputes
+- **DAO governance** - Community-driven dispute resolution with weighted voting
 - **Event-driven sync** - Blockchain events automatically update off-chain database
 - **Secure by design** - Signature verification for all write operations
 
@@ -45,6 +46,37 @@ The platform now supports:
 - Frontend deposit flow (approve → deposit → activate)
 - Real-time escrow status display with balance tracking
 
+✅ **Spec 4: Matching & Assignment - COMPLETE**
+
+The platform now supports:
+- Auto-assignment algorithm with multi-factor scoring (0-130 points)
+- Skill overlap scoring (0-100 points, 50% minimum required)
+- Idle time bonus (0-20 points, fairness mechanism)
+- Reputation bonus (0-10 points, quality incentive)
+- Pending queue processing
+- No-refusal policy enforcement
+
+✅ **Spec 5: Reviews & Ratings - COMPLETE**
+
+The platform now supports:
+- Bidirectional reviews (client → developer, developer → client)
+- 1-5 star ratings with comments
+- Auto-calculated average ratings and rating distributions
+- Review editing within 7-day window
+- Per-project and per-user review queries
+- Reputation tracking on developer and client profiles
+
+✅ **Spec 6: Dispute Resolution - COMPLETE**
+
+The platform now supports:
+- On-chain dispute creation via DisputeDAO contract
+- Evidence submission with deadlines
+- Weighted voting by EliteToken holders (soulbound governance token)
+- Quorum-based resolution with automated fund distribution
+- Owner fallback resolution when quorum not met
+- Dispute event synchronization to database
+- Frontend dispute listing and detail pages
+
 ## Architecture
 
 ```
@@ -56,6 +88,10 @@ The platform now supports:
 │  - /projects - Browse projects                                       │
 │  - /projects/create - Create project                                 │
 │  - /projects/[id] - Project details & milestones                     │
+│  - /disputes - DAO arbitration listing                               │
+│  - /disputes/[id] - Dispute details & voting                         │
+│  - /dashboard/client - Client dashboard & settings                   │
+│  - /dashboard/developer - Developer dashboard & settings             │
 └─────────────────────┬───────────────────────────────────────────────┘
                       │
                       ↓
@@ -68,9 +104,11 @@ The platform now supports:
          │  Milestones: POST/PUT /api/milestones      │
          │  Clients:    POST/GET /api/clients         │
          │  Escrow:     POST/GET /api/escrow          │
+         │  Reviews:    POST/GET/PUT /api/reviews     │
+         │  Disputes:   POST/GET/PUT /api/disputes    │
          │                                            │
          │  + Matching Algorithm Service              │
-         │    (Auto-assignment logic)                 │
+         │  + Voting Power Sync Service               │
          └─────────┬──────────────────────┬───────────┘
                    │                      │
                    ↓                      ↓
@@ -84,29 +122,42 @@ The platform now supports:
          │  - milestones     │  │                          │
          │  - escrow_deposits│  │  - ProjectManager.sol    │
          │  - payment_history│  │    • createProject()     │
-         │  - system_state   │  │    • assignDeveloper()   │
-         │                   │◄─┤    • updateProjectState()│
-         │                   │  │                          │
-         │                   │  │  - EscrowVault.sol       │
+         │  - reviews        │  │    • assignDeveloper()   │
+         │  - disputes       │  │    • updateProjectState()│
+         │  - dispute_votes  │  │                          │
+         │  - system_state   │  │  - EscrowVault.sol       │
          │                   │◄─┤    • deposit()           │
          │                   │  │    • release()           │
          │                   │  │    • releaseFee()        │
          │                   │  │    • freeze()            │
+         │                   │  │                          │
+         │                   │  │  - DisputeDAO.sol        │
+         │                   │◄─┤    • createDispute()     │
+         │                   │  │    • castVote()          │
+         │                   │  │    • executeResolution() │
+         │                   │  │                          │
+         │                   │  │  - EliteToken.sol        │
+         │                   │  │    • mint() / burn()     │
+         │                   │  │    • delegate()          │
+         │                   │  │    • getVotes()          │
          └───────────────────┘  └──────────────────────────┘
                                           │
                                           │ Events
                                           ↓
                                  Event Listeners
                               (Background Services)
+                           - Stake events
+                           - Escrow events
+                           - Dispute events
 ```
 
 ## Tech Stack
 
 ### Smart Contracts
-- **Solidity**: ^0.8.20
+- **Solidity**: ^0.8.22
 - **Development**: Hardhat 2.x
 - **Testing**: Chai + Ethers.js
-- **Libraries**: OpenZeppelin Contracts v5
+- **Libraries**: OpenZeppelin Contracts v5 (upgradeable)
 - **Network**: Arbitrum Sepolia (testnet) → Arbitrum One (mainnet)
 
 ### Backend
@@ -115,13 +166,15 @@ The platform now supports:
 - **Language**: TypeScript
 - **Database**: PostgreSQL 15+
 - **Blockchain**: ethers.js v6
+- **Testing**: Jest + Supertest (289 tests)
 - **Validation**: Custom validators + signature verification
 
 ### Frontend
-- **Framework**: Next.js 14
+- **Framework**: Next.js 16
 - **Web3**: wagmi + viem
-- **Styling**: Tailwind CSS
+- **Styling**: Tailwind CSS 4
 - **Language**: TypeScript
+- **State**: @tanstack/react-query
 
 ## Project Structure
 
@@ -129,20 +182,26 @@ The platform now supports:
 0xElite/
 ├── contracts/                 # Smart contracts (Hardhat)
 │   ├── contracts/
-│   │   ├── StakeVault.sol    # USDC staking contract
+│   │   ├── StakeVault.sol    # USDC staking (UUPS upgradeable)
 │   │   ├── ProjectManager.sol # Project lifecycle management
 │   │   ├── EscrowVault.sol   # Milestone-based payment escrow
+│   │   ├── DisputeDAO.sol    # DAO dispute resolution
+│   │   ├── EliteToken.sol    # Soulbound governance token (xELITE)
 │   │   └── test/
-│   │       └── MockERC20.sol # Test USDC token
+│   │       ├── MockERC20.sol # Test ERC20 token
+│   │       └── MockUSDC.sol  # Test USDC token
 │   ├── test/
 │   │   ├── StakeVault.test.js     # 23 passing tests
 │   │   ├── ProjectManager.test.js # 34 passing tests
-│   │   └── EscrowVault.test.js    # 59 passing tests
+│   │   ├── EscrowVault.test.js    # 59 passing tests
+│   │   ├── DisputeDAO.test.js     # 61 passing tests
+│   │   └── EliteToken.test.js     # 23 passing tests
 │   ├── scripts/
-│   │   └── deploy.js         # Deployment script
-│   └── hardhat.config.js
+│   │   ├── deploy.ts         # Deployment script
+│   │   └── upgrade.ts        # Upgrade script
+│   └── hardhat.config.ts
 │
-├── backend/                   # API + Event Listener
+├── backend/                   # API + Event Listeners
 │   ├── src/
 │   │   ├── api/
 │   │   │   └── routes/
@@ -150,7 +209,9 @@ The platform now supports:
 │   │   │       ├── projects.ts        # Project API routes
 │   │   │       ├── milestones.ts      # Milestone API routes
 │   │   │       ├── clients.ts         # Client API routes
-│   │   │       └── escrow.ts          # Escrow API routes
+│   │   │       ├── escrow.ts          # Escrow API routes
+│   │   │       ├── reviews.ts         # Reviews API routes
+│   │   │       └── disputes.ts        # Disputes API routes
 │   │   ├── config/
 │   │   │   ├── database.ts            # PostgreSQL connection
 │   │   │   └── eventSync.ts           # Event listener config
@@ -161,26 +222,37 @@ The platform now supports:
 │   │   │   └── migrations/
 │   │   │       ├── 001_create_developers_table.sql
 │   │   │       ├── 002_create_project_tables.sql
-│   │   │       └── 003_create_escrow_tables.sql
+│   │   │       ├── 003_create_escrow_tables.sql
+│   │   │       ├── 004_create_reviews_table.sql
+│   │   │       └── 005_create_dispute_tables.sql
 │   │   ├── services/
 │   │   │   ├── matchingAlgorithm.ts   # Auto-assignment logic
 │   │   │   ├── escrowEventListener.ts # Escrow event sync
+│   │   │   ├── votingPowerSync.ts     # EliteToken balance sync
 │   │   │   └── eventListeners/
-│   │   │       └── stakeListener.ts   # Stake event sync
+│   │   │       ├── stakeListener.ts   # Stake event sync
+│   │   │       └── disputeListener.ts # Dispute event sync
 │   │   ├── utils/
 │   │   │   ├── signature.ts           # SIWE verification
-│   │   │   ├── signatureVerification.ts # Signature helper
 │   │   │   ├── validation.ts          # Input validation
 │   │   │   └── logger.ts              # Logging utility
 │   │   ├── types/
 │   │   │   └── developer.ts           # TypeScript types
+│   │   ├── __tests__/                 # Jest test suite (289 tests)
+│   │   │   ├── setup.ts
+│   │   │   ├── helpers/
+│   │   │   ├── utils/
+│   │   │   ├── api/
+│   │   │   └── services/
 │   │   ├── index.ts                   # API server
 │   │   └── listener.ts                # Event listener service
+│   ├── jest.config.ts
 │   └── package.json
 │
 ├── frontend/                  # Next.js dApp
 │   ├── src/
 │   │   ├── app/
+│   │   │   ├── page.tsx              # Homepage
 │   │   │   ├── apply/
 │   │   │   │   └── page.tsx          # Developer registration
 │   │   │   ├── developers/[address]/
@@ -191,46 +263,91 @@ The platform now supports:
 │   │   │   │   │   └── page.tsx      # Create project
 │   │   │   │   └── [id]/
 │   │   │   │       └── page.tsx      # Project details
-│   │   │   └── page.tsx              # Homepage
+│   │   │   ├── disputes/
+│   │   │   │   ├── page.tsx          # DAO arbitration listing
+│   │   │   │   └── [id]/
+│   │   │   │       └── page.tsx      # Dispute details & voting
+│   │   │   └── dashboard/
+│   │   │       ├── client/
+│   │   │       │   ├── page.tsx      # Client dashboard
+│   │   │       │   ├── projects/
+│   │   │       │   │   ├── page.tsx  # Client projects list
+│   │   │       │   │   └── [id]/
+│   │   │       │   │       └── page.tsx  # Client project detail
+│   │   │       │   └── settings/
+│   │   │       │       └── page.tsx  # Client settings
+│   │   │       └── developer/
+│   │   │           ├── page.tsx      # Developer dashboard
+│   │   │           ├── projects/
+│   │   │           │   └── page.tsx  # Developer projects list
+│   │   │           └── settings/
+│   │   │               └── page.tsx  # Developer settings
 │   │   └── components/
 │   │       ├── ConnectWallet.tsx
+│   │       ├── client/
+│   │       │   ├── CreateProjectModal.tsx
+│   │       │   └── EditClientProfileModal.tsx
 │   │       ├── developer/
 │   │       │   ├── DeveloperApplicationForm.tsx
 │   │       │   ├── StakeFlow.tsx
 │   │       │   └── EditProfileModal.tsx
-│   │       └── project/
-│   │           ├── MilestoneManager.tsx
-│   │           ├── MilestoneCard.tsx
-│   │           └── ProjectStatusBadge.tsx
+│   │       ├── project/
+│   │       │   ├── MilestoneManager.tsx
+│   │       │   ├── MilestoneCard.tsx
+│   │       │   └── ProjectStatusBadge.tsx
+│   │       ├── disputes/
+│   │       │   ├── DisputeCard.tsx
+│   │       │   └── DisputeStatusBadge.tsx
+│   │       └── reviews/
+│   │           ├── RatingStars.tsx
+│   │           ├── ReviewCard.tsx
+│   │           ├── ReviewList.tsx
+│   │           └── SubmitReviewModal.tsx
 │   └── package.json
 │
 ├── specs/                     # Technical specifications
 │   ├── capabilities/          # Behavioral requirements
 │   │   ├── developer-onboarding/
 │   │   ├── project-management/
-│   │   └── escrow-management/
+│   │   ├── escrow-management/
+│   │   ├── review-management/
+│   │   ├── client-dashboard/
+│   │   └── dispute-resolution/
 │   ├── data-models/           # Database schemas
 │   │   ├── developer/
 │   │   ├── client/
 │   │   ├── project/
 │   │   ├── milestone/
 │   │   ├── escrow/
-│   │   └── payment-history/
+│   │   ├── payment-history/
+│   │   ├── review/
+│   │   ├── dispute/
+│   │   └── dispute-vote/
 │   ├── api/                   # API endpoints
 │   │   ├── developer-management/
 │   │   ├── project-management/
-│   │   └── escrow-management/
+│   │   ├── escrow-management/
+│   │   ├── client-management/
+│   │   ├── review-management/
+│   │   └── dispute-management/
 │   ├── architecture/          # System design
 │   │   ├── stake-vault-contract/
 │   │   ├── project-manager-contract/
 │   │   ├── escrow-vault-contract/
 │   │   ├── escrow-event-listener/
 │   │   ├── event-sync-system/
-│   │   └── matching-algorithm/
+│   │   ├── matching-algorithm/
+│   │   ├── elite-token-contract/
+│   │   ├── dispute-dao-contract/
+│   │   └── dispute-event-listener/
 │   ├── changes/
 │   │   └── archive/
 │   │       ├── 20260125-add-developer-onboarding/  # Spec 1
-│   │       └── 20260125-add-escrow-system/         # Spec 3
+│   │       ├── 20260125-add-project-management/    # Spec 2
+│   │       ├── 20260125-add-escrow-system/         # Spec 3
+│   │       ├── 20260217-add-reviews-ratings/       # Spec 5
+│   │       ├── 20260217-add-client-dashboard/      # Client dashboard
+│   │       └── add-dao-arbitration/                # Spec 6
 │   └── RFC/                                       # All RFCs consolidated here
 │       ├── RFC-001-data-sync-strategy.md
 │       ├── RFC-002-onchain-storage-decisions.md
@@ -239,6 +356,10 @@ The platform now supports:
 │       ├── RFC-005-sybil-prevention.md
 │       ├── RFC-006-task-assignment.md
 │       └── RFC-007-data-architecture.md
+│
+├── docs/
+│   ├── PROJECT_OVERVIEW.md
+│   └── RFC/                   # RFC documents (linked from specs)
 │
 └── README.md
 ```
@@ -264,7 +385,7 @@ cp .env.example .env
 npx hardhat test
 
 # Deploy to Sepolia
-npx hardhat run scripts/deploy.js --network sepolia
+npx hardhat run scripts/deploy.ts --network sepolia
 # Note the deployed contract addresses
 ```
 
@@ -321,6 +442,8 @@ RPC_URL=https://arb-sepolia.g.alchemy.com/v2/YOUR_KEY
 STAKE_VAULT_ADDRESS=0x...         # From StakeVault deployment
 PROJECT_MANAGER_ADDRESS=0x...     # From ProjectManager deployment
 ESCROW_VAULT_ADDRESS=0x...        # From EscrowVault deployment
+DISPUTE_DAO_ADDRESS=0x...         # From DisputeDAO deployment
+ELITE_TOKEN_ADDRESS=0x...         # From EliteToken deployment
 PRIVATE_KEY=your_backend_service_private_key  # For contract interactions
 START_BLOCK=0
 
@@ -341,6 +464,8 @@ NEXT_PUBLIC_USDC_ADDRESS=0x...
 NEXT_PUBLIC_STAKE_VAULT_ADDRESS=0x...
 NEXT_PUBLIC_PROJECT_MANAGER_ADDRESS=0x...
 NEXT_PUBLIC_ESCROW_VAULT_ADDRESS=0x...
+NEXT_PUBLIC_DISPUTE_DAO_ADDRESS=0x...
+NEXT_PUBLIC_ELITE_TOKEN_ADDRESS=0x...
 ```
 
 ## Key Features Implemented
@@ -377,17 +502,44 @@ NEXT_PUBLIC_ESCROW_VAULT_ADDRESS=0x...
   - Progress bar visualization
 - ✅ Event-driven synchronization (Deposited, Released, FeesCollected, Frozen)
 
+### Reviews & Ratings (Spec 5)
+- ✅ Bidirectional reviews (client → developer, developer → client)
+- ✅ 1-5 star rating system with comments (max 1000 chars)
+- ✅ Auto-calculated average ratings and rating distributions
+- ✅ Review editing within 7-day window
+- ✅ Per-project and per-user review queries
+- ✅ Paginated and sortable review listings
+
+### Dispute Resolution (Spec 6)
+- ✅ On-chain dispute creation via DisputeDAO contract
+- ✅ Evidence submission with configurable deadlines
+- ✅ Weighted voting by EliteToken holders
+- ✅ Quorum-based resolution (25% of total supply)
+- ✅ Automated fund distribution (client/developer shares)
+- ✅ Owner fallback resolution when quorum not met
+- ✅ Dispute event listener (syncs on-chain events to database)
+- ✅ Frontend dispute listing and detail/voting pages
+
 ### Smart Contracts
-- ✅ StakeVault contract (stake/unstake USDC)
+- ✅ **StakeVault** - USDC stake/unstake (UUPS upgradeable)
   - 23 comprehensive tests (all passing)
   - Gas optimized (~563k deployment, ~52k additional stakes)
-- ✅ ProjectManager contract (project lifecycle management)
+- ✅ **ProjectManager** - Project lifecycle management
   - 34 comprehensive tests (all passing)
   - Gas optimized (~718k deployment, ~122k create, ~74k assign)
-- ✅ EscrowVault contract (milestone-based payment escrow)
+- ✅ **EscrowVault** - Milestone-based payment escrow
   - 59 comprehensive tests (all passing)
   - Gas optimized (~132k deposit, ~91k release, ~50k freeze)
   - USDC-only (6 decimals), no native ETH
+- ✅ **DisputeDAO** - DAO dispute resolution with weighted voting
+  - 61 comprehensive tests (all passing)
+  - 4-phase lifecycle: creation → evidence → voting → resolution
+  - Configurable arbitration fees, quorum, and time periods
+- ✅ **EliteToken** - Soulbound governance token (xELITE)
+  - 23 comprehensive tests (all passing)
+  - Non-transferable (soulbound), only mint/burn by owner
+  - ERC20Votes for on-chain voting power tracking
+  - Timestamp-based checkpoints (L2-compatible)
 - ✅ Cumulative staking support
 - ✅ Ownership controls
 - ✅ Reentrancy protection
@@ -420,6 +572,22 @@ NEXT_PUBLIC_ESCROW_VAULT_ADDRESS=0x...
 - ✅ POST /api/escrow/freeze - Freeze escrow (admin/dispute only)
 - ✅ POST /api/escrow/unfreeze - Unfreeze after dispute resolution
 
+**Review Management:**
+- ✅ POST /api/reviews - Submit review (after project completion)
+- ✅ GET /api/reviews/developer/:address - Get developer reviews (paginated)
+- ✅ GET /api/reviews/client/:address - Get client reviews (paginated)
+- ✅ GET /api/reviews/project/:projectId - Get project reviews
+- ✅ PUT /api/reviews/:id - Edit review (within 7 days)
+
+**Dispute Management:**
+- ✅ POST /api/disputes - Create dispute (client or developer)
+- ✅ GET /api/disputes/:id - View dispute details
+- ✅ GET /api/disputes/project/:projectId - Get project disputes
+- ✅ PUT /api/disputes/:id/evidence - Submit/update evidence
+- ✅ GET /api/disputes/:id/votes - Get dispute votes
+- ✅ GET /api/disputes/active/list - List active disputes (paginated)
+- ✅ GET /api/disputes/my/:address - Get user's disputes (paginated)
+
 **Features:**
 - ✅ Wallet signature verification
 - ✅ Input validation and error handling
@@ -442,6 +610,15 @@ NEXT_PUBLIC_ESCROW_VAULT_ADDRESS=0x...
 - ✅ Checkpoint system for crash recovery
 - ✅ Retry logic with exponential backoff
 - ✅ Health monitoring
+- ✅ Stake event listener
+- ✅ Escrow event listener
+- ✅ Dispute event listener
+
+### Voting Power Sync
+- ✅ EliteToken balance synchronization
+- ✅ Formula: `voting_power = total_earned × (average_rating / 5.0)`
+- ✅ Automatic mint/burn to match calculated power
+- ✅ Per-developer and batch sync support
 
 ## API Documentation
 
@@ -545,6 +722,15 @@ Content-Type: application/json
 4. **Record Deposit** - Backend records deposit and activates project
 5. **Track Status** - View escrow balance and payment history at /projects/[id]
 
+### Dispute Resolution Flow
+
+1. **Dispute Created** - Client or developer initiates dispute on-chain
+2. **Evidence Period** - Both parties submit evidence URIs within deadline
+3. **Voting Starts** - Transitions to voting phase after evidence deadline
+4. **DAO Votes** - EliteToken holders cast weighted votes
+5. **Resolution** - If quorum met, execute resolution; otherwise owner resolves
+6. **Fund Distribution** - Escrow funds distributed based on outcome (client/developer shares)
+
 ## Testing
 
 ### Smart Contracts
@@ -579,12 +765,50 @@ npx hardhat test
 - Edge cases (insufficient balance, frozen escrow)
 - Gas optimization verification
 
+**DisputeDAO Coverage:** 61/61 tests passing
+- Deployment and initialization
+- Dispute creation and validation
+- Evidence submission
+- Voting (start, cast, weighted)
+- Resolution (quorum-based, owner fallback)
+- View functions
+- Admin functions
+
+**EliteToken Coverage:** 23/23 tests passing
+- Deployment and initialization
+- Minting and burning
+- Soulbound enforcement (non-transferable)
+- Voting power and delegation
+- Access control
+
 ### Backend API
 ```bash
 cd backend
-npm run dev
-# Use Postman/curl to test endpoints
+npm test                # Run all 289 tests
+npm run test:watch      # Watch mode
+npm run test:coverage   # With coverage report
 ```
+
+**Test Coverage:** 289/289 tests passing across 14 test files
+
+| Category | File | Tests |
+|----------|------|-------|
+| Utils | validation.test.ts | 72 |
+| Utils | signature.test.ts | 11 |
+| API | reviews.test.ts | 27 |
+| API | developers.test.ts | 26 |
+| API | projects.test.ts | 26 |
+| API | disputes.test.ts | 23 |
+| API | escrow.test.ts | 19 |
+| API | milestones.test.ts | 18 |
+| API | clients.test.ts | 12 |
+| Services | escrowEventListener.test.ts | 14 |
+| Services | matchingAlgorithm.test.ts | 13 |
+| Services | disputeListener.test.ts | 12 |
+| Services | votingPowerSync.test.ts | 8 |
+| Services | stakeListener.test.ts | 8 |
+
+All tests run with mocked dependencies (no real DB or blockchain needed).
 
 ### Frontend
 ```bash
@@ -633,35 +857,55 @@ Key architectural decisions documented in RFCs:
   - Frontend deposit flow (3-step: approve → deposit → record)
   - Frontend escrow status display (balances, breakdown, progress)
 
-### Planned 📋
+- [x] **Spec 4: Matching & Assignment**
+  - Auto-assignment algorithm (skill + availability + reputation scoring)
+  - Skill-based scoring (50% minimum overlap)
+  - No-refusal policy enforcement
+  - Pending queue processing
 
-- [ ] **Spec 4: Matching & Assignment** (Partially Complete)
-  - ✅ Auto-assignment algorithm implemented
-  - ✅ Skill-based scoring
-  - ✅ No-refusal policy enforced
-  - [ ] Manual invitation system (optional)
-  - [ ] Developer preferences (future enhancement)
+- [x] **Spec 5: Reviews & Ratings**
+  - Database schema (reviews table, rating triggers)
+  - Backend API (5 review endpoints)
+  - Bidirectional reviews (client ↔ developer)
+  - Auto-calculated ratings and distributions
+  - Frontend review components (ReviewList, ReviewCard, SubmitReviewModal, RatingStars)
 
-- [ ] **Spec 5: Reviews & Ratings**
-  - Review submission (client → developer, developer → client)
-  - Rating calculations
-  - Reputation tracking
-  - Review display on profiles
+- [x] **Spec 6: Dispute Resolution**
+  - Smart contracts (DisputeDAO, EliteToken)
+  - Database schema (disputes, dispute_votes)
+  - Backend API (7 dispute endpoints)
+  - Event listener (dispute sync)
+  - Voting power sync service (EliteToken balance management)
+  - Frontend pages (/disputes, /disputes/[id])
 
-- [ ] **Spec 6: Dispute Resolution**
-  - Dispute filing
-  - DAO arbitration
-  - DisputeDAO contract
-  - Evidence submission
+- [x] **Client Dashboard**
+  - Frontend pages (/dashboard/client, projects, settings)
+  - Client profile management
+  - Project tracking views
+
+- [x] **Developer Dashboard**
+  - Frontend pages (/dashboard/developer, projects, settings)
+  - Developer profile management
+  - Project tracking views
+
+### Remaining Work 📋
+
+- [ ] Deploy DisputeDAO and EliteToken contracts (deploy script not yet updated)
+- [ ] Smart contract audit
+- [ ] Rate limiting on API endpoints
+- [ ] Email verification
+- [ ] Manual developer invitation system (optional enhancement)
+- [ ] Developer work preferences (optional enhancement)
 
 ## Development Scripts
 
 ### Contracts
 ```bash
-npx hardhat compile          # Compile contracts
-npx hardhat test            # Run tests
-npx hardhat node            # Start local node
-npx hardhat run scripts/deploy.js  # Deploy
+npx hardhat compile              # Compile contracts
+npx hardhat test                 # Run tests (200 total)
+npx hardhat node                 # Start local node
+npx hardhat run scripts/deploy.ts  # Deploy
+npx hardhat run scripts/upgrade.ts # Upgrade proxy
 ```
 
 ### Backend
@@ -671,6 +915,9 @@ npm run dev:listener        # Start event listener
 npm run migrate             # Run database migrations
 npm run build               # Build TypeScript
 npm start                   # Run production build
+npm test                    # Run Jest tests (289 tests)
+npm run test:watch          # Jest watch mode
+npm run test:coverage       # Jest with coverage
 ```
 
 ### Frontend
@@ -697,6 +944,8 @@ npm run lint                # Run linter
 - ✅ Immutable payment history (trigger-enforced audit trail)
 - ✅ Safe ERC20 transfers (OpenZeppelin SafeERC20)
 - ✅ Payment atomicity (milestone only completed if payment succeeds)
+- ✅ Soulbound token enforcement (EliteToken non-transferable)
+- ✅ Quorum-based dispute resolution (prevents minority attacks)
 - ⚠️ Smart contract audit pending
 - ⚠️ Rate limiting not yet implemented
 - ⚠️ Email verification not yet implemented
