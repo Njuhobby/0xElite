@@ -8,7 +8,10 @@ export interface Developer {
   availability: 'available' | 'busy' | 'vacation';
   stake_amount: string;
   staked_at: Date | null;
-  status: 'pending' | 'active' | 'suspended';
+  status: 'pending' | 'staked' | 'active' | 'rejected' | 'suspended';
+  admin_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }

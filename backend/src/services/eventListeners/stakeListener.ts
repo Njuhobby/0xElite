@@ -176,12 +176,12 @@ export class StakeEventListener {
       // Convert amount from wei to USDC (6 decimals)
       const stakeAmount = ethers.formatUnits(amount, 6);
 
-      // Update developer record
+      // Update developer record — set to 'staked' (pending admin approval)
       const result = await client.query(
         `UPDATE developers
          SET stake_amount = $1,
              staked_at = NOW(),
-             status = 'active',
+             status = 'staked',
              updated_at = NOW()
          WHERE wallet_address = $2
          RETURNING *`,
@@ -196,13 +196,7 @@ export class StakeEventListener {
 
       await client.query('COMMIT');
 
-      const developer = result.rows[0];
-      logger.info(`Successfully activated developer ${developerAddress}, stake: ${stakeAmount} USDC`);
-
-      // Send welcome email (async, don't wait)
-      this.sendWelcomeEmail(developerAddress, developer.email).catch((err) => {
-        logger.error('Failed to send welcome email:', err);
-      });
+      logger.info(`Developer ${developerAddress} staked ${stakeAmount} USDC, pending admin approval`);
     } catch (error) {
       await client.query('ROLLBACK');
       logger.error(`Database update failed for ${developerAddress}:`, error);

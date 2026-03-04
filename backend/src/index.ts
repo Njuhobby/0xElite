@@ -10,6 +10,7 @@ import clientsRouter, { initialize as initializeClients } from './api/routes/cli
 import escrowRouter, { initialize as initializeEscrow } from './api/routes/escrow';
 import reviewsRouter from './api/routes/reviews';
 import disputesRouter from './api/routes/disputes';
+import adminRouter from './api/routes/admin';
 import { databaseConfig } from './config/database';
 
 dotenv.config();
@@ -93,6 +94,7 @@ app.use('/api/clients', clientsRouter);
 app.use('/api/escrow', escrowRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/disputes', disputesRouter);
+app.use('/api/admin', adminRouter);
 
 // 404 handler
 app.use((req, res) => {
