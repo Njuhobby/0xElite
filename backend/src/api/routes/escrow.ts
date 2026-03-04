@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { Pool } from 'pg';
 import { ethers } from 'ethers';
-import { verifySignature } from '../../utils/signatureVerification';
+import { verifySignature } from '../../utils/signature';
 
 const router = express.Router();
 
