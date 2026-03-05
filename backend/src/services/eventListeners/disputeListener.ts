@@ -18,7 +18,7 @@ const DISPUTE_DAO_ABI = [
 const CHECKPOINT_KEY = 'dispute_listener_checkpoint';
 
 export class DisputeEventListener {
-  private provider: ethers.JsonRpcProvider;
+  private provider: ethers.WebSocketProvider | ethers.JsonRpcProvider;
   private contract: ethers.Contract;
   private db: Pool;
   private lastProcessedBlock: number = 0;
@@ -33,7 +33,11 @@ export class DisputeEventListener {
       throw new Error('DISPUTE_DAO_ADDRESS environment variable is required');
     }
 
-    this.provider = new ethers.JsonRpcProvider(eventSyncConfig.rpcUrl);
+    if (eventSyncConfig.rpcUrl.startsWith('ws')) {
+      this.provider = new ethers.WebSocketProvider(eventSyncConfig.rpcUrl);
+    } else {
+      this.provider = new ethers.JsonRpcProvider(eventSyncConfig.rpcUrl);
+    }
     this.contract = new ethers.Contract(disputeDAOAddress, DISPUTE_DAO_ABI, this.provider);
   }
 
@@ -76,36 +80,68 @@ export class DisputeEventListener {
 
   startRealTimeListener(): void {
     this.isRunning = true;
-    logger.info('DisputeListener: Starting real-time polling...');
 
-    this.pollingTimer = setInterval(async () => {
-      if (!this.isRunning) return;
+    if (this.provider instanceof ethers.WebSocketProvider) {
+      logger.info('DisputeListener: Starting real-time WebSocket listener...');
 
-      try {
-        const currentBlock = await this.provider.getBlockNumber();
-        if (currentBlock <= this.lastProcessedBlock) return;
-
-        const fromBlock = this.lastProcessedBlock + 1;
-        const toBlock = Math.min(fromBlock + eventSyncConfig.batchSize, currentBlock);
-
-        const events = await this.contract.queryFilter('*' as any, fromBlock, toBlock);
-
-        for (const event of events) {
-          await this.processEvent(event as ethers.EventLog);
+      this.contract.on('*', async (event: ethers.EventLog) => {
+        if (!this.isRunning) return;
+        try {
+          await this.processEvent(event);
+          if (event.blockNumber > this.lastProcessedBlock) {
+            this.lastProcessedBlock = event.blockNumber;
+            await this.saveCheckpoint(event.blockNumber);
+          }
+          this.consecutiveErrors = 0;
+        } catch (error) {
+          logger.error('DisputeListener: Error processing real-time event:', error);
+          this.consecutiveErrors++;
         }
+      });
 
-        this.lastProcessedBlock = toBlock;
-        await this.saveCheckpoint(toBlock);
-        this.consecutiveErrors = 0;
-      } catch (error) {
-        logger.error('DisputeListener: Polling error:', error);
-        this.consecutiveErrors++;
-      }
-    }, eventSyncConfig.pollingInterval);
+      // Auto-reconnect on WebSocket disconnect
+      this.provider.on('error', async (error) => {
+        logger.error('DisputeListener: WebSocket error:', error);
+        logger.info('DisputeListener: Attempting to reconnect...');
+        await this.stop();
+        setTimeout(() => {
+          this.isRunning = true;
+          this.startRealTimeListener();
+        }, 5000);
+      });
+    } else {
+      logger.info('DisputeListener: Starting real-time polling...');
+
+      this.pollingTimer = setInterval(async () => {
+        if (!this.isRunning) return;
+
+        try {
+          const currentBlock = await this.provider.getBlockNumber();
+          if (currentBlock <= this.lastProcessedBlock) return;
+
+          const fromBlock = this.lastProcessedBlock + 1;
+          const toBlock = Math.min(fromBlock + eventSyncConfig.batchSize, currentBlock);
+
+          const events = await this.contract.queryFilter('*' as any, fromBlock, toBlock);
+
+          for (const event of events) {
+            await this.processEvent(event as ethers.EventLog);
+          }
+
+          this.lastProcessedBlock = toBlock;
+          await this.saveCheckpoint(toBlock);
+          this.consecutiveErrors = 0;
+        } catch (error) {
+          logger.error('DisputeListener: Polling error:', error);
+          this.consecutiveErrors++;
+        }
+      }, eventSyncConfig.pollingInterval);
+    }
   }
 
   async stop(): Promise<void> {
     this.isRunning = false;
+    this.contract.removeAllListeners();
     if (this.pollingTimer) {
       clearInterval(this.pollingTimer);
       this.pollingTimer = null;

@@ -13,13 +13,17 @@ const PROJECT_MANAGER_ABI = [
 const CHECKPOINT_KEY = 'last_processed_block_milestone_listener';
 
 export class MilestoneEventListener {
-  private provider: ethers.JsonRpcProvider;
+  private provider: ethers.WebSocketProvider | ethers.JsonRpcProvider;
   private contract: ethers.Contract;
   private lastProcessedBlock: number;
   private consecutiveErrors: number = 0;
 
   constructor(projectManagerAddress: string) {
-    this.provider = new ethers.JsonRpcProvider(eventSyncConfig.rpcUrl);
+    if (eventSyncConfig.rpcUrl.startsWith('ws')) {
+      this.provider = new ethers.WebSocketProvider(eventSyncConfig.rpcUrl);
+    } else {
+      this.provider = new ethers.JsonRpcProvider(eventSyncConfig.rpcUrl);
+    }
     this.contract = new ethers.Contract(
       projectManagerAddress,
       PROJECT_MANAGER_ABI,
@@ -150,6 +154,16 @@ export class MilestoneEventListener {
         await this.retryProcessEvent(() => this.processDevelopersAssigned(event));
       }
     });
+
+    // Auto-reconnect on WebSocket disconnect
+    if (this.provider instanceof ethers.WebSocketProvider) {
+      this.provider.on('error', async (error) => {
+        logger.error('[MilestoneListener] WebSocket error:', error);
+        logger.info('[MilestoneListener] Attempting to reconnect...');
+        await this.stop();
+        setTimeout(() => startMilestoneListener(this.contract.target as string), 5000);
+      });
+    }
 
     logger.info('[MilestoneListener] Real-time listener started');
   }
