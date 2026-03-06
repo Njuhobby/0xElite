@@ -385,14 +385,19 @@
 │   │  Purpose: 管理开发者质押                                              │  │
 │   │                                                                     │  │
 │   │  Key Functions:                                                     │  │
-│   │  • stake(amount)      - 开发者质押 USDC                              │  │
-│   │  • unstake(amount)    - 开发者取回质押 (有条件)                       │  │
-│   │  • slash(developer)   - 惩罚恶意开发者 (扣除质押)                     │  │
+│   │  • stake(amount)             - 开发者质押 USDC                       │  │
+│   │  • unstake(amount)           - Owner 取回自身质押 (onlyOwner)        │  │
+│   │  • unstakeFor(dev, amount)   - Owner 代开发者取回质押 (自动解锁)     │  │
+│   │                                                                     │  │
+│   │  Unlock Schedule (backend auto-executes via unstakeFor):            │  │
+│   │  •  5 projects → 50 USDC    (remaining 150)                         │  │
+│   │  • 10 projects → 50 USDC    (remaining 100)                         │  │
+│   │  • 15 projects → 50 USDC    (remaining  50)                         │  │
+│   │  • 20 projects → 50 USDC    (remaining   0)                         │  │
 │   │                                                                     │  │
 │   │  Events:                                                            │  │
 │   │  • Staked(developer, amount)                                        │  │
 │   │  • Unstaked(developer, amount)                                      │  │
-│   │  • Slashed(developer, amount, reason)                               │  │
 │   └─────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────┐  │

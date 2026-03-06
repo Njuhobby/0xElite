@@ -109,19 +109,27 @@ Flow: Register (pending) → Stake USDC (staked) → Admin approves (active)
 ```
 Initial Stake: 200 USDC (dynamically adjustable)
 
-Stake destination: Deposited into Aave for yield
-Yield ownership: Developer keeps all interest earned
+Stake destination: Held in StakeVault contract (yield integration deferred)
 
-Unlock schedule:
-├── Complete  5 projects → Unlock 50 USDC (remaining: 150)
-├── Complete 10 projects → Unlock 50 USDC (remaining: 100)
-├── Complete 15 projects → Unlock 50 USDC (remaining:  50)
-└── Complete 20 projects → Unlock 50 USDC (remaining:   0, fully unlocked)
+Unlock schedule (automatic, no developer action needed):
+├── Complete  5 projects → Backend auto-unstakes 50 USDC (remaining: 150)
+├── Complete 10 projects → Backend auto-unstakes 50 USDC (remaining: 100)
+├── Complete 15 projects → Backend auto-unstakes 50 USDC (remaining:  50)
+└── Complete 20 projects → Backend auto-unstakes 50 USDC (remaining:   0, fully unlocked)
+
+Unlock mechanism:
+├── unstake() is onlyOwner — developers CANNOT self-unstake
+├── Backend wallet (contract owner) calls unstakeFor(developer, amount)
+├── Source of truth: ProjectManager contract ProjectStateChanged events
+├── Backend milestoneListener increments projects_completed on Completed
+├── unlockService checks tier thresholds after each project completion
+├── If new tier reached → automatic on-chain unstakeFor() → notify developer
+└── Skip-tier handling: if multiple thresholds crossed at once, single tx
 
 Exit process:
-├── Request exit
+├── Request exit (future implementation)
 ├── 30-day cooling period (must complete current projects)
-├── Return full remaining stake
+├── Return full remaining stake via unstakeFor()
 └── Account deactivated, reputation reset to zero
 ```
 
@@ -130,9 +138,10 @@ Exit process:
 | Concern | Solution |
 |---------|----------|
 | "Stake returned too early → fund new accounts" | Gradual unlock tied to project completion |
-| "Stake returned too late → developer complaints" | Stake earns yield while locked |
+| "Developer self-unstakes to circumvent schedule" | unstake() is onlyOwner — only backend can release funds |
 | "After unlock, low stake remaining" | High reputation = high earning potential, not worth abandoning |
 | "Exit and create new account" | Exit = lose all reputation, start from zero |
+| "Backend fails to execute unlock" | Admin alerts on failure, manual override available |
 
 ### GitHub Binding (Optional Enhancement)
 
