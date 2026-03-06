@@ -90,7 +90,7 @@ export class EscrowEventListener {
     // Initialize contract
     this.contract = new ethers.Contract(
       config.escrowVaultAddress,
-      escrowVaultAbi,
+      escrowVaultAbi.abi,
       this.provider
     );
   }
