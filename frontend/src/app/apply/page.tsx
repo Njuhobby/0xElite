@@ -37,7 +37,7 @@ export default function ApplyPage() {
             Join as a <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Developer</span>
           </h1>
           <p className="text-gray-300 text-lg">
-            Complete your profile and stake 150 USDC to get started
+            Complete your profile and stake 200 USDC to get started
           </p>
         </div>
 

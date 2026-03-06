@@ -107,15 +107,16 @@ Flow: Register (pending) → Stake USDC (staked) → Admin approves (active)
 ### Staking Mechanism
 
 ```
-Initial Stake: ~150 USDC (dynamically adjustable)
+Initial Stake: 200 USDC (dynamically adjustable)
 
 Stake destination: Deposited into Aave for yield
 Yield ownership: Developer keeps all interest earned
 
 Unlock schedule:
-├── Complete 10 projects → Unlock 50 USDC
-├── Complete 25 projects → Unlock 50 USDC
-└── Minimum retained: 50 USDC (always)
+├── Complete  5 projects → Unlock 50 USDC (remaining: 150)
+├── Complete 10 projects → Unlock 50 USDC (remaining: 100)
+├── Complete 15 projects → Unlock 50 USDC (remaining:  50)
+└── Complete 20 projects → Unlock 50 USDC (remaining:   0, fully unlocked)
 
 Exit process:
 ├── Request exit
@@ -141,7 +142,7 @@ Exit process:
 
 ## Consequences
 
-1. Developers need upfront capital (150 USDC) - may exclude some
+1. Developers need upfront capital (200 USDC) - may exclude some
 2. Dynamic stake threshold needed to adjust for market conditions
 3. Stake management adds smart contract complexity
 4. Exit process needs careful implementation to prevent gaming

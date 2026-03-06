@@ -7,7 +7,7 @@ async function main() {
   // Get configuration from environment or use defaults
   const USDC_ADDRESS = process.env.USDC_ADDRESS || "";
   const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS || deployer.address;
-  const REQUIRED_STAKE = process.env.REQUIRED_STAKE || "150000000"; // 150 USDC (6 decimals)
+  const REQUIRED_STAKE = process.env.REQUIRED_STAKE || "200000000"; // 200 USDC (6 decimals)
   const PLATFORM_FEE_BPS = parseInt(process.env.PLATFORM_FEE_BPS || "1000"); // 1000 = 10%
 
   if (!USDC_ADDRESS) {

@@ -71,7 +71,7 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
     functionName: 'requiredStake',
   });
 
-  const stakeAmount = requiredStake || parseUnits('150', 6); // Default 150 USDC
+  const stakeAmount = requiredStake || parseUnits('200', 6); // Default 200 USDC
 
   // Check USDC allowance
   const { data: allowance } = useReadContract({

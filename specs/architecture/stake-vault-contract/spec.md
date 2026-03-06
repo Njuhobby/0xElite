@@ -143,7 +143,7 @@ contract StakeVault is Ownable, ReentrancyGuard {
 | Parameter | Value | Notes |
 |-----------|-------|-------|
 | `stakeToken` | USDC contract address | Sepolia testnet: mock USDC, Arbitrum: official USDC |
-| `requiredStake` | 150 * 10^6 | 150 USDC (6 decimals) |
+| `requiredStake` | 200 * 10^6 | 200 USDC (6 decimals) |
 
 **Gas Optimization**:
 - Use `immutable` for `stakeToken` (saves SLOAD)
