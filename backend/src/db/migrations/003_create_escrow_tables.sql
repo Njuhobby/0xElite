@@ -38,7 +38,7 @@ CREATE INDEX idx_escrow_frozen ON escrow_deposits(is_frozen) WHERE is_frozen = t
 CREATE TRIGGER update_escrow_deposits_timestamp
 BEFORE UPDATE ON escrow_deposits
 FOR EACH ROW
-EXECUTE FUNCTION update_timestamp();
+EXECUTE FUNCTION update_updated_at_column();
 
 -- ==============================================
 -- 2. CREATE PAYMENT_HISTORY TABLE
