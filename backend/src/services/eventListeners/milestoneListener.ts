@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { pool } from '../../config/database';
 import { logger } from '../../utils/logger';
 import { eventSyncConfig } from '../../config/eventSync';
+import { checkAndExecuteUnlock } from '../unlockService';
 
 const PROJECT_MANAGER_ABI = [
   'event MilestoneApproved(uint256 indexed projectId, uint8 milestoneIndex, uint256 developerPayment, uint256 platformFee)',
@@ -281,6 +282,22 @@ export class MilestoneEventListener {
 
       await client.query('COMMIT');
       logger.info(`[MilestoneListener] Project ${project.id} marked as completed`);
+
+      // Check if developer qualifies for stake unlock (async, non-blocking)
+      if (project.assigned_developer) {
+        try {
+          const unlockResult = await checkAndExecuteUnlock(project.assigned_developer);
+          if (unlockResult) {
+            logger.info(
+              `[MilestoneListener] Auto-unlock executed: ${unlockResult.amount} USDC for ${project.assigned_developer} ` +
+              `(tier ${unlockResult.fromTier}→${unlockResult.toTier}, tx=${unlockResult.txHash})`
+            );
+          }
+        } catch (unlockError) {
+          // Unlock failure must NOT block event processing
+          logger.error(`[MilestoneListener] Unlock check failed for ${project.assigned_developer}:`, unlockError);
+        }
+      }
     } catch (error) {
       await client.query('ROLLBACK');
       logger.error('[MilestoneListener] DB update failed for ProjectStateChanged:', error);

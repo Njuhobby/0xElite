@@ -3,6 +3,7 @@ import { pool } from '../../config/database';
 import { verifySignature } from '../../utils/signature';
 import { validateCreateDeveloper, validateUpdateDeveloper } from '../../utils/validation';
 import type { Developer, CreateDeveloperInput, UpdateDeveloperInput } from '../../types/developer';
+import { getUnlockStatus, getUnlockHistory } from '../../services/unlockService';
 
 const router = Router();
 
@@ -167,6 +168,10 @@ router.get('/:address', async (req, res) => {
       stakeAmount: developer.stake_amount,
       status: developer.status,
       createdAt: developer.created_at,
+      unlockTier: developer.unlock_tier,
+      totalUnlocked: developer.total_unlocked,
+      remainingStake: Math.max(0, Number(developer.stake_amount || 0) - Number(developer.total_unlocked || 0)).toFixed(6),
+      lastUnlockAt: developer.last_unlock_at,
     };
 
     // Include email and updatedAt for owner
@@ -337,6 +342,50 @@ router.put('/:address', async (req, res) => {
     }
   } catch (error) {
     console.error('Error updating developer:', error);
+    return res.status(500).json({
+      error: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred',
+    });
+  }
+});
+
+/**
+ * GET /api/developers/:address/unlock-history
+ * Get unlock history and status for a developer
+ */
+router.get('/:address/unlock-history', async (req, res) => {
+  try {
+    const { address } = req.params;
+
+    const status = await getUnlockStatus(address);
+    if (!status) {
+      return res.status(404).json({
+        error: 'DEVELOPER_NOT_FOUND',
+        message: `No developer found with address ${address}`,
+      });
+    }
+
+    const history = await getUnlockHistory(address);
+
+    return res.json({
+      developer: {
+        address: status.address,
+        projects_completed: status.projectsCompleted,
+        unlock_tier: status.unlockTier,
+        total_unlocked: status.totalUnlocked,
+        remaining_stake: status.remainingStake,
+        next_unlock: status.nextUnlock
+          ? {
+              projects_needed: status.nextUnlock.projectsNeeded,
+              projects_remaining: status.nextUnlock.projectsRemaining,
+              amount: status.nextUnlock.amount,
+            }
+          : null,
+      },
+      history,
+    });
+  } catch (error) {
+    console.error('Error fetching unlock history:', error);
     return res.status(500).json({
       error: 'INTERNAL_ERROR',
       message: 'An unexpected error occurred',

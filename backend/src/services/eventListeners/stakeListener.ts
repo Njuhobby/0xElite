@@ -75,13 +75,19 @@ export class StakeEventListener {
         logger.info(`Syncing blocks ${fromBlock} to ${toBlock}`);
 
         try {
-          const filter = this.contract.filters.Staked();
-          const events = await this.contract.queryFilter(filter, fromBlock, toBlock);
+          const [stakedEvents, unstakedEvents] = await Promise.all([
+            this.contract.queryFilter(this.contract.filters.Staked(), fromBlock, toBlock),
+            this.contract.queryFilter(this.contract.filters.Unstaked(), fromBlock, toBlock),
+          ]);
 
-          logger.info(`Found ${events.length} Staked events in range ${fromBlock}-${toBlock}`);
+          logger.info(`Found ${stakedEvents.length} Staked, ${unstakedEvents.length} Unstaked events in range ${fromBlock}-${toBlock}`);
 
-          for (const event of events) {
+          for (const event of stakedEvents) {
             await this.processStakedEvent(event as ethers.EventLog);
+          }
+
+          for (const event of unstakedEvents) {
+            await this.processUnstakedEvent(event as ethers.EventLog);
           }
 
           fromBlock = toBlock + 1;
@@ -155,6 +161,25 @@ export class StakeEventListener {
       }
     });
 
+    this.contract.on('Unstaked', async (developer: string, amount: bigint, event: ethers.Log) => {
+      logger.info(`Received Unstaked event: ${developer} unstaked ${amount}`);
+
+      try {
+        const eventLog = event as ethers.EventLog;
+        await this.processUnstakedEvent(eventLog);
+
+        if (eventLog.blockNumber > this.lastProcessedBlock) {
+          this.lastProcessedBlock = eventLog.blockNumber;
+          await this.saveCheckpoint(eventLog.blockNumber);
+        }
+
+        this.consecutiveErrors = 0;
+      } catch (error) {
+        logger.error('Error processing Unstaked event:', error);
+        this.consecutiveErrors++;
+      }
+    });
+
     logger.info('Real-time listener started');
   }
 
@@ -203,6 +228,34 @@ export class StakeEventListener {
       throw error; // Re-throw to trigger retry
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Process an Unstaked event and update database
+   */
+  private async processUnstakedEvent(event: ethers.EventLog): Promise<void> {
+    const args = event.args as unknown as StakedEventArgs;
+    const developerAddress = args.developer.toLowerCase();
+    const amount = args.amount;
+
+    logger.info(`Processing unstake for ${developerAddress}: ${amount}`);
+
+    const unstakeAmount = ethers.formatUnits(amount, 6);
+
+    try {
+      await pool.query(
+        `UPDATE developers
+         SET stake_amount = GREATEST(0, stake_amount - $1),
+             updated_at = NOW()
+         WHERE wallet_address = $2`,
+        [unstakeAmount, developerAddress]
+      );
+
+      logger.info(`Developer ${developerAddress} unstaked ${unstakeAmount} USDC`);
+    } catch (error) {
+      logger.error(`Database update failed for unstake ${developerAddress}:`, error);
+      throw error;
     }
   }
 
