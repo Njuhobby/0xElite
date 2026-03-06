@@ -15,17 +15,53 @@ async function runMigrations() {
   try {
     console.log('Running database migrations...\n');
 
+    // Ensure schema_migrations table exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename VARCHAR(255) PRIMARY KEY,
+        applied_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Get already-applied migrations
+    const applied = await client.query('SELECT filename FROM schema_migrations');
+    const appliedSet = new Set(applied.rows.map(r => r.filename));
+
     const migrationsDir = path.join(__dirname, 'migrations');
     const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
 
+    let appliedCount = 0;
+
     for (const file of files) {
+      if (appliedSet.has(file)) {
+        console.log(`⏭ ${file} (already applied)`);
+        continue;
+      }
+
       console.log(`Applying migration: ${file}`);
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-      await client.query(sql);
-      console.log(`✓ ${file} applied successfully\n`);
+
+      await client.query('BEGIN');
+      try {
+        await client.query(sql);
+        await client.query(
+          'INSERT INTO schema_migrations (filename) VALUES ($1)',
+          [file]
+        );
+        await client.query('COMMIT');
+        console.log(`✓ ${file} applied successfully\n`);
+        appliedCount++;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
     }
 
-    console.log('All migrations completed successfully!');
+    if (appliedCount === 0) {
+      console.log('\nNo new migrations to apply.');
+    } else {
+      console.log(`\n${appliedCount} migration(s) applied successfully!`);
+    }
   } catch (error) {
     console.error('Migration failed:', error);
     throw error;
