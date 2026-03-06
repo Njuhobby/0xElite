@@ -140,7 +140,9 @@ export class EscrowEventListener {
         const events = await this.contract.queryFilter('*', start, end);
 
         for (const event of events) {
-          await this.processEvent(event);
+          if (event instanceof ethers.EventLog) {
+            await this.processEvent(event);
+          }
         }
 
         // Save checkpoint
