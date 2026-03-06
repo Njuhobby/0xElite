@@ -101,15 +101,29 @@ contract StakeVault is
         emit Staked(msg.sender, amount);
     }
 
-    /// @notice Withdraw staked USDC (future: implement unlock conditions)
-    /// @param amount Amount to withdraw
-    function unstake(uint256 amount) external nonReentrant {
+    /// @notice Withdraw staked USDC (owner-only, used by backend unlock service)
+    /// @param amount Amount to withdraw from caller's own stake
+    function unstake(uint256 amount) external onlyOwner nonReentrant {
         require(stakes[msg.sender] >= amount, "Insufficient stake");
 
         stakes[msg.sender] -= amount;
         require(stakeToken.transfer(msg.sender, amount), "Transfer failed");
 
         emit Unstaked(msg.sender, amount);
+    }
+
+    /// @notice Unstake on behalf of a developer (owner-only, used by backend auto-unlock)
+    /// @param developer Address of the developer to unstake for
+    /// @param amount Amount of USDC to return to the developer
+    function unstakeFor(address developer, uint256 amount) external onlyOwner nonReentrant {
+        require(developer != address(0), "Invalid developer address");
+        require(amount > 0, "Amount must be positive");
+        require(stakes[developer] >= amount, "Insufficient stake");
+
+        stakes[developer] -= amount;
+        require(stakeToken.transfer(developer, amount), "Transfer failed");
+
+        emit Unstaked(developer, amount);
     }
 
     /// @notice Get current stake for a developer
