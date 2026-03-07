@@ -49,9 +49,17 @@ const STAKE_VAULT_ABI = [
 const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d') as Address;
 const STAKE_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_STAKE_VAULT_ADDRESS || '0x...') as Address;
 
+interface FormData {
+  email: string;
+  githubUsername?: string;
+  skills: string[];
+  bio?: string;
+  hourlyRate?: string;
+}
+
 interface Props {
   address: string;
-  formData: any;
+  formData: FormData;
   onBack: () => void;
   onSuccess: () => void;
 }
