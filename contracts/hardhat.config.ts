@@ -25,17 +25,16 @@ const config: HardhatUserConfig = {
     hardhat: {
       chainId: 31337,
     },
-    sepolia: {
+    arbitrumSepolia: {
       url: process.env.RPC_URL || "",
-      accounts,
-    },
-    arbitrum: {
-      url: process.env.RPC_URL || "",
+      chainId: 421614,
       accounts,
     },
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY || "",
+    apiKey: {
+      arbitrumSepolia: process.env.ETHERSCAN_API_KEY || "",
+    },
   },
   paths: {
     sources: "./contracts",
