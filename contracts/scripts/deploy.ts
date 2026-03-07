@@ -11,16 +11,10 @@ async function main() {
   const PLATFORM_FEE_BPS = parseInt(process.env.PLATFORM_FEE_BPS || "1000"); // 1000 = 10%
 
   if (!USDC_ADDRESS) {
-    console.log("\n⚠️  USDC_ADDRESS not set. Deploying MockUSDC for testing...");
-    const MockUSDC = await ethers.getContractFactory("MockUSDC");
-    const mockUSDC = await MockUSDC.deploy();
-    await mockUSDC.waitForDeployment();
-    const usdcAddress = await mockUSDC.getAddress();
-    console.log("MockUSDC deployed to:", usdcAddress);
-    process.env.USDC_ADDRESS = usdcAddress;
+    throw new Error("USDC_ADDRESS is required. Set it in your environment before deploying.");
   }
 
-  const usdcAddress = process.env.USDC_ADDRESS!;
+  const usdcAddress = USDC_ADDRESS;
 
   console.log("\n📦 Deploying StakeVault (UUPS Proxy)...");
   const StakeVault = await ethers.getContractFactory("StakeVault");
