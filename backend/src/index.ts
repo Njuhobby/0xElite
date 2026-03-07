@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import { ethers } from 'ethers';
 import { Pool } from 'pg';
 import developersRouter from './api/routes/developers';
@@ -14,7 +15,7 @@ import adminRouter from './api/routes/admin';
 import { databaseConfig } from './config/database';
 import { startMilestoneListener } from './services/eventListeners/milestoneListener';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;

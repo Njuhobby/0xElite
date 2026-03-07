@@ -1,8 +1,9 @@
 import dotenv from 'dotenv';
+import path from 'path';
 import { startEventListeners } from './services/eventListeners/stakeListener';
 import { logger } from './utils/logger';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 /**
  * Event Listener Service Entry Point
