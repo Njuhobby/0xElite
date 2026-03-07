@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWriteContract, useReadContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
 import { parseUnits, Address } from 'viem';
 
@@ -132,11 +132,7 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   }, [stakeError]);
 
   // Sign message for backend
-  const { signMessage } = useSignMessage({
-    onSuccess: async (signature) => {
-      await submitProfile(signature);
-    },
-  });
+  const { signMessageAsync } = useSignMessage();
 
   const generateMessage = () => {
     const timestamp = Date.now();
@@ -207,10 +203,15 @@ Timestamp: ${timestamp}`;
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError('');
-    const message = generateMessage();
-    signMessage({ message });
+    try {
+      const message = generateMessage();
+      const signature = await signMessageAsync({ message });
+      await submitProfile(signature);
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign message');
+    }
   };
 
   const isAllowanceSufficient = allowance && BigInt(allowance as any) >= BigInt(stakeAmount);
@@ -248,7 +249,7 @@ Timestamp: ${timestamp}`;
           </div>
         </div>
         <p className="text-gray-300 text-sm mt-4">
-          This stake proves your commitment and prevents spam. You can unstake after completing 10 projects.
+          This stake proves your commitment and prevents spam. It is gradually returned as you complete projects (50 USDC per 5 projects).
         </p>
       </div>
 
