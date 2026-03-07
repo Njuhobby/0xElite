@@ -95,8 +95,8 @@ Timestamp: ${timestamp}`;
       const message = generateMessage();
       const signature = await signMessageAsync({ message });
       await submitUpdate(signature);
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign message');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sign message');
       setIsSubmitting(false);
     }
   };

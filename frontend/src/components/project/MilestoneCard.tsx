@@ -154,8 +154,8 @@ Timestamp: ${timestamp}`;
       const message = generateMessage('Start work on');
       const signature = await signMessageAsync({ message });
       await updateMilestone(signature, message);
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign message');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sign message');
       setIsUpdating(false);
     }
   };
@@ -172,8 +172,8 @@ Timestamp: ${timestamp}`;
       const message = generateMessage('Submit milestone for review');
       const signature = await signMessageAsync({ message });
       await updateMilestone(signature, message);
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign message');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sign message');
       setIsUpdating(false);
     }
   };
@@ -198,8 +198,8 @@ Timestamp: ${timestamp}`;
       const message = generateMessage('Approve milestone completion');
       const signature = await signMessageAsync({ message });
       await updateMilestone(signature, message);
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign message');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sign message');
       setIsUpdating(false);
     }
   };
