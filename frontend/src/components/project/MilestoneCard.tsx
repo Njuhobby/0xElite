@@ -60,15 +60,7 @@ export default function MilestoneCard({ milestone, isClient, isDeveloper, onUpda
   const [deliverableUrls, setDeliverableUrls] = useState<string[]>(['']);
   const [reviewNotes, setReviewNotes] = useState('');
 
-  const { signMessage } = useSignMessage({
-    onSuccess: async (signature, variables) => {
-      await updateMilestone(signature, variables.message);
-    },
-    onError: (error) => {
-      setError(error.message);
-      setIsUpdating(false);
-    },
-  });
+  const { signMessageAsync } = useSignMessage();
 
   // On-chain milestone approval for milestone-based projects
   const {
@@ -155,14 +147,20 @@ Timestamp: ${timestamp}`;
     }
   };
 
-  const handleStartWork = () => {
+  const handleStartWork = async () => {
     setError('');
     setIsUpdating(true);
-    const message = generateMessage('Start work on');
-    signMessage({ message });
+    try {
+      const message = generateMessage('Start work on');
+      const signature = await signMessageAsync({ message });
+      await updateMilestone(signature, message);
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign message');
+      setIsUpdating(false);
+    }
   };
 
-  const handleSubmitForReview = () => {
+  const handleSubmitForReview = async () => {
     if (deliverableUrls.filter(url => url.trim()).length === 0) {
       setError('Please provide at least one deliverable URL');
       return;
@@ -170,11 +168,17 @@ Timestamp: ${timestamp}`;
 
     setError('');
     setIsUpdating(true);
-    const message = generateMessage('Submit milestone for review');
-    signMessage({ message });
+    try {
+      const message = generateMessage('Submit milestone for review');
+      const signature = await signMessageAsync({ message });
+      await updateMilestone(signature, message);
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign message');
+      setIsUpdating(false);
+    }
   };
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     setError('');
     setIsUpdating(true);
 
@@ -190,8 +194,14 @@ Timestamp: ${timestamp}`;
     }
 
     // Fallback: backend-mediated approval for simple projects
-    const message = generateMessage('Approve milestone completion');
-    signMessage({ message });
+    try {
+      const message = generateMessage('Approve milestone completion');
+      const signature = await signMessageAsync({ message });
+      await updateMilestone(signature, message);
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign message');
+      setIsUpdating(false);
+    }
   };
 
   const addDeliverableUrl = () => {

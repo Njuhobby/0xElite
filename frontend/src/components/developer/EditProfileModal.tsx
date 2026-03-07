@@ -36,15 +36,7 @@ export default function EditProfileModal({ developer, onClose, onSuccess }: Prop
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const { signMessage } = useSignMessage({
-    onSuccess: async (signature) => {
-      await submitUpdate(signature);
-    },
-    onError: (error) => {
-      setError(error.message);
-      setIsSubmitting(false);
-    },
-  });
+  const { signMessageAsync } = useSignMessage();
 
   const generateMessage = () => {
     const timestamp = Date.now();
@@ -95,12 +87,18 @@ Timestamp: ${timestamp}`;
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
-    const message = generateMessage();
-    signMessage({ message });
+    try {
+      const message = generateMessage();
+      const signature = await signMessageAsync({ message });
+      await submitUpdate(signature);
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign message');
+      setIsSubmitting(false);
+    }
   };
 
   const toggleSkill = (skill: string) => {
