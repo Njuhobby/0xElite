@@ -222,7 +222,7 @@ Timestamp: ${timestamp}`;
     }
   };
 
-  const isAllowanceSufficient = allowance && BigInt(allowance as any) >= BigInt(stakeAmount);
+  const isAllowanceSufficient = allowance != null && BigInt(allowance.toString()) >= BigInt(stakeAmount);
 
   return (
     <div className="space-y-6">
