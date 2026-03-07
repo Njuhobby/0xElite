@@ -139,7 +139,7 @@
 │   │  准入条件:                       │  │  准入条件:                       │ │
 │   │  • 连接钱包                      │  │  • 连接钱包                      │ │
 │   │  • 填写申请表                    │  │  • (无需审核)                    │ │
-│   │  • 质押 USDC (如 500 USDC)      │  │                                 │ │
+│   │  • 质押 200 USDC                │  │                                 │ │
 │   │                                 │  │                                 │ │
 │   │  状态流转:                       │  │  主要操作:                       │ │
 │   │  pending → active → suspended   │  │  • 链上创建项目+里程碑            │ │
@@ -529,7 +529,10 @@
 │   │ availability  │           │ status            │                        │
 │   │ stake_amount  │           │ skills_req[]      │                        │
 │   │ status        │           │ uses_onchain_ms   │  (on-chain milestone?) │
-│   └───────────────┘           │ contract_proj_id  │  (on-chain project ID) │
+│   │ unlock_tier   │  (0-4)   │ contract_proj_id  │  (on-chain project ID) │
+│   │ total_unlocked│           │                   │                        │
+│   │ last_unlock_at│           │                   │                        │
+│   └───────────────┘           │                   │                        │
 │                               │ created_at        │                        │
 │                               └─────────┬─────────┘                        │
 │                                         │                                   │
@@ -593,6 +596,24 @@
 │                          │ vote_weight   │                                │
 │                          └───────────────┘                                │
 │                                                                             │
+│   ┌─────────────────┐                                                      │
+│   │ unlock_history  │  (Auto-Unstake 审计表)                                │
+│   ├─────────────────┤                                                      │
+│   │ developer_addr  │──────────► developers.wallet_address                 │
+│   │ amount          │  (每次解锁 50 USDC)                                   │
+│   │ from_tier       │                                                      │
+│   │ to_tier         │                                                      │
+│   │ tx_hash         │  (链上交易哈希, UNIQUE)                               │
+│   │ unlocked_at     │                                                      │
+│   └─────────────────┘                                                      │
+│                                                                             │
+│   ┌───────────────────┐                                                    │
+│   │schema_migrations │  (迁移版本追踪)                                      │
+│   ├───────────────────┤                                                    │
+│   │ filename (PK)    │                                                     │
+│   │ applied_at       │                                                     │
+│   └───────────────────┘                                                    │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -610,7 +631,9 @@
 │   │ pending │───────────────►│ active  │───────────────►│ suspended │      │
 │   └─────────┘                └─────────┘                └───────────┘      │
 │        ▲                          │                           │            │
-│        │                          │ unstake()                 │ appeal()   │
+│        │                          │ unstakeFor()              │ appeal()   │
+│        │                          │ (owner auto-unlock,       │            │
+│        │                          │  全额解锁后)              │            │
 │        │                          ▼                           │            │
 │        │                    ┌─────────┐                       │            │
 │        └────────────────────│ inactive│◄──────────────────────┘            │
@@ -669,9 +692,10 @@
 │   ────────────────────────────────                                          │
 │   POST   /                      注册新开发者                                 │
 │   GET    /                      获取开发者列表 (支持过滤)                     │
-│   GET    /:address              获取开发者详情                               │
+│   GET    /:address              获取开发者详情 (含 unlock 状态)              │
 │   PUT    /:address              更新开发者信息                               │
 │   GET    /:address/projects     获取开发者的项目                             │
+│   GET    /:address/unlock-history 获取质押解锁历史                           │
 │                                                                             │
 │   Projects API (/api/projects)                                              │
 │   ───────────────────────────                                               │
@@ -800,9 +824,22 @@
 │   • Frontend: contracts.ts with PROJECT_MANAGER_ABI ✅                     │
 │   • Remaining: contract deployment, E2E testing                            │
 │                                                                             │
+│   Auto-Unstake (add-auto-unstake change)                                   │
+│   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% ✅      │
+│   [██████████████████████████████████████████████████]                      │
+│   • StakeVault: onlyOwner unstake + unstakeFor(dev, amount) ✅             │
+│   • StakeVault tests rewritten (33 tests, UUPS proxy deploy) ✅           │
+│   • Database migration 008 (unlock_tier, unlock_history table) ✅          │
+│   • unlockService.ts (tier calc, skip-tier, on-chain retry) ✅             │
+│   • milestoneListener integration (auto-unlock on completion) ✅           │
+│   • stakeListener: Unstaked event handling ✅                              │
+│   • GET /developers/:address/unlock-history endpoint ✅                    │
+│   • RFC-005 + PROJECT_OVERVIEW updated ✅                                  │
+│   • Remaining: contract deployment, E2E testing                            │
+│                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│   Overall Progress:  ~97%                                                   │
-│   [████████████████████████████████████████████████░░]                      │
+│   Overall Progress:  ~98%                                                   │
+│   [█████████████████████████████████████████████████░]                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -922,25 +959,34 @@ ELITE_TOKEN_ADDRESS=0x...
 │   │   ├── escrow.ts
 │   │   ├── reviews.ts
 │   │   └── disputes.ts               # Spec 4
+│   ├── src/config/
+│   │   ├── database.ts               # PostgreSQL connection pool
+│   │   └── eventSync.ts              # Event listener shared config
 │   ├── src/services/
 │   │   ├── matchingAlgorithm.ts
 │   │   ├── escrowEventListener.ts
+│   │   ├── unlockService.ts           # Auto-unstake tier calc + on-chain exec
 │   │   ├── votingPowerSync.ts         # Spec 4
 │   │   └── eventListeners/
-│   │       ├── milestoneListener.ts   # RFC-008: MilestoneApproved sync
+│   │       ├── stakeListener.ts       # Staked + Unstaked event sync
+│   │       ├── milestoneListener.ts   # MilestoneApproved sync + unlock trigger
 │   │       └── disputeListener.ts     # Spec 4
 │   ├── src/types/
 │   │   ├── developer.ts
 │   │   ├── client.ts
 │   │   ├── review.ts
 │   │   └── dispute.ts                # Spec 4
-│   └── src/db/migrations/
-│       ├── 001_create_developers_table.sql
-│       ├── 002_create_project_tables.sql
-│       ├── 003_create_escrow_tables.sql
-│       ├── 004_create_reviews_table.sql
-│       ├── 005_create_dispute_tables.sql  # Spec 4
-│       └── 007_add_onchain_milestone_fields.sql  # RFC-008
+│   └── src/db/
+│       ├── migrate.ts                     # Migration runner (schema_migrations tracking)
+│       └── migrations/
+│           ├── 001_create_developers_table.sql
+│           ├── 002_create_project_tables.sql
+│           ├── 003_create_escrow_tables.sql
+│           ├── 004_create_reviews_table.sql
+│           ├── 005_create_dispute_tables.sql  # Spec 4
+│           ├── 006_add_admin_approval.sql
+│           ├── 007_add_onchain_milestone_fields.sql  # RFC-008
+│           └── 008_add_unlock_tracking.sql    # Auto-unstake
 │
 ├── contracts/
 │   ├── contracts/
@@ -950,6 +996,8 @@ ELITE_TOKEN_ADDRESS=0x...
 │   │   ├── EliteToken.sol             # Spec 4 (soulbound ERC20Votes)
 │   │   └── DisputeDAO.sol             # Spec 4 (DAO arbitration)
 │   ├── test/
+│   │   ├── StakeVault.test.js         # 33 tests (UUPS proxy, unstakeFor)
+│   │   ├── EscrowVault.test.js
 │   │   ├── ProjectManager.test.js     # 78 tests (milestones + payments)
 │   │   ├── EliteToken.test.js         # 23 tests
 │   │   └── DisputeDAO.test.js         # 52 tests
@@ -959,6 +1007,7 @@ ELITE_TOKEN_ADDRESS=0x...
 │
 ├── docs/
 │   └── RFC/
+│       ├── RFC-005-sybil-prevention.md    # Staking + unlock schedule
 │       └── RFC-008-onchain-milestones.md  # On-chain milestone design
 │
 └── specs/
@@ -983,8 +1032,10 @@ ELITE_TOKEN_ADDRESS=0x...
     ├── data-models/
     │   ├── project/                   # uses_onchain_milestones, contract_project_id
     │   └── milestone/                 # details_hash, on_chain_index
-    └── changes/archive/              # Archived change proposals
-        └── add-dao-arbitration/      # Spec 4 (archived)
+    └── changes/
+        ├── add-auto-unstake/         # Auto-unstake change proposal + specs
+        └── archive/
+            └── add-dao-arbitration/  # Spec 4 (archived)
 ```
 
 ---
@@ -993,11 +1044,12 @@ ELITE_TOKEN_ADDRESS=0x...
 
 1. **Deploy Contracts** - 部署 StakeVault, EscrowVault, ProjectManager, EliteToken, DisputeDAO 到测试网
 2. **Configure Addresses** - 在 .env 中配置合约地址 (包括 ProjectManager)
-3. **Run Database Migration 007** - 添加 details_hash, on_chain_index, uses_onchain_milestones 字段
-4. **E2E Integration Testing** - 端到端测试: 链上创建项目 → 存入 escrow → 开发 → 链上审批付款
+3. **Run Database Migrations** - `npm run migrate` 执行全部迁移 (001-008, schema_migrations 自动追踪)
+4. **E2E Integration Testing** - 端到端测试: 链上创建项目 → 存入 escrow → 开发 → 链上审批付款 → 自动解锁质押
 5. **Voting Power Sync** - 部署后运行 votingPowerSync 同步开发者投票权
 6. **Gas Optimization** - 合约 gas 优化和安全审计
+7. **Backend Wallet Setup** - 配置后端 owner wallet 用于 unstakeFor() 自动解锁操作
 
 ---
 
-*Last updated: March 4, 2026*
+*Last updated: March 7, 2026*
