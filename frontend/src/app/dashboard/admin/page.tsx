@@ -55,8 +55,8 @@ export default function AdminDashboardPage() {
       const data = await response.json();
       setDevelopers(data.data);
       setPagination(data.pagination);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -96,8 +96,8 @@ export default function AdminDashboardPage() {
 
       setSuccessMessage(`Developer ${developerAddress.slice(0, 6)}...${developerAddress.slice(-4)} approved`);
       setDevelopers((prev) => prev.filter((d) => d.walletAddress !== developerAddress.toLowerCase()));
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setActionLoading(null);
     }
@@ -141,8 +141,8 @@ export default function AdminDashboardPage() {
         delete next[developerAddress];
         return next;
       });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setActionLoading(null);
     }

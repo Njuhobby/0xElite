@@ -49,7 +49,7 @@ Timestamp: ${timestamp}`;
   const submitUpdate = async (signature: string) => {
     try {
       const message = generateMessage();
-      const updates: any = {
+      const updates: Record<string, unknown> = {
         address: developer.walletAddress,
         message,
         signature,
@@ -80,8 +80,8 @@ Timestamp: ${timestamp}`;
       }
 
       onSuccess();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
       setIsSubmitting(false);
     }

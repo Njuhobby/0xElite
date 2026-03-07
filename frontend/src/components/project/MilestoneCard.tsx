@@ -97,7 +97,7 @@ Timestamp: ${timestamp}`;
 
   const updateMilestone = async (signature: string, message: string) => {
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         address,
         message,
         signature,
@@ -140,8 +140,8 @@ Timestamp: ${timestamp}`;
       setDeliverableUrls(['']);
       setReviewNotes('');
       onUpdate();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update milestone');
     } finally {
       setIsUpdating(false);
     }

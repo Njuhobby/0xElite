@@ -238,8 +238,8 @@ Timestamp: ${timestamp}`;
               });
               setDepositStep('approving');
               setIsSubmitting(false);
-            } catch (err: any) {
-              setError(err.message);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'An error occurred');
               setDepositStep('creating_onchain');
               setIsSubmitting(false);
             }
@@ -251,8 +251,8 @@ Timestamp: ${timestamp}`;
           },
         }
       );
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
       setDepositStep('creating_onchain');
       setIsSubmitting(false);
     }
@@ -271,8 +271,8 @@ Timestamp: ${timestamp}`;
         functionName: 'approve',
         args: [ESCROW_VAULT_ADDRESS, amountUsdc],
       });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
       setDepositStep('form');
     }
   };
@@ -291,8 +291,8 @@ Timestamp: ${timestamp}`;
         functionName: 'deposit',
         args: [BigInt(createdProject.contractProjectId), amountUsdc],
       });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
       setDepositStep('approving');
     }
   };
@@ -346,8 +346,8 @@ Timestamp: ${timestamp}`;
           },
         }
       );
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
       setDepositStep('depositing');
     }
   };

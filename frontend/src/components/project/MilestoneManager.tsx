@@ -31,7 +31,7 @@ function computeHash(m: Milestone): string | null {
 }
 
 export default function MilestoneManager({ milestones, onChange, totalBudget }: Props) {
-  const updateMilestone = (index: number, field: keyof Milestone, value: any) => {
+  const updateMilestone = (index: number, field: keyof Milestone, value: Milestone[keyof Milestone]) => {
     const updated = [...milestones];
     updated[index] = { ...updated[index], [field]: value };
     onChange(updated);

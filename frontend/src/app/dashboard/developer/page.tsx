@@ -47,8 +47,8 @@ export default function DeveloperDashboardPage() {
 
       const data = await response.json();
       setDeveloper(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }

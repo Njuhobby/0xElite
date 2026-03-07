@@ -183,9 +183,9 @@ Timestamp: ${timestamp}`;
 
       // Success!
       onSuccess();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Profile submission error:', err);
-      setError(err.message || 'Failed to submit profile');
+      setError(err instanceof Error ? err.message : 'Failed to submit profile');
     } finally {
       setIsProcessing(false);
     }

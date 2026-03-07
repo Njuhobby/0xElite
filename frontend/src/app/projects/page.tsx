@@ -54,8 +54,8 @@ export default function ProjectsPage() {
 
       const data = await response.json();
       setProjects(data.projects);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
