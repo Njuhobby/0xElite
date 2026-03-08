@@ -1,9 +1,17 @@
 import { Router } from 'express';
+import { ethers } from 'ethers';
 import { pool } from '../../config/database';
+import { eventSyncConfig } from '../../config/eventSync';
 import { verifySignature } from '../../utils/signature';
 import { validateCreateDeveloper, validateUpdateDeveloper } from '../../utils/validation';
 import type { Developer, CreateDeveloperInput, UpdateDeveloperInput } from '../../types/developer';
 import { getUnlockStatus, getUnlockHistory } from '../../services/unlockService';
+
+const STAKE_VAULT_ABI = [
+  'function stake(address developer, uint256 amount) external',
+];
+
+const STAKE_AMOUNT = ethers.parseUnits('200', 6); // 200 USDC
 
 const router = Router();
 
@@ -103,6 +111,43 @@ router.post('/', async (req, res) => {
       );
 
       const developer = result.rows[0];
+
+      // Execute on-chain stake on behalf of the developer
+      try {
+        const privateKey = process.env.PRIVATE_KEY;
+        if (!privateKey) {
+          throw new Error('PRIVATE_KEY not configured');
+        }
+
+        const provider = new ethers.JsonRpcProvider(eventSyncConfig.rpcUrl);
+        const wallet = new ethers.Wallet(privateKey, provider);
+        const stakeVaultContract = new ethers.Contract(
+          eventSyncConfig.stakeVaultAddress,
+          STAKE_VAULT_ABI,
+          wallet
+        );
+
+        const tx = await stakeVaultContract.stake(walletAddress, STAKE_AMOUNT);
+        await tx.wait(eventSyncConfig.confirmations);
+        console.log(`Staked ${ethers.formatUnits(STAKE_AMOUNT, 6)} USDC for developer ${walletAddress}, tx: ${tx.hash}`);
+      } catch (stakeError) {
+        console.error('On-chain stake failed for developer:', walletAddress, stakeError);
+        // Profile was created but stake failed — return 201 with a warning
+        return res.status(201).json({
+          walletAddress: developer.wallet_address,
+          email: developer.email,
+          githubUsername: developer.github_username,
+          skills: developer.skills,
+          bio: developer.bio,
+          hourlyRate: developer.hourly_rate,
+          availability: developer.availability,
+          stakeAmount: developer.stake_amount,
+          status: developer.status,
+          createdAt: developer.created_at,
+          updatedAt: developer.updated_at,
+          warning: 'Profile created but on-chain stake failed. Please contact support.',
+        });
+      }
 
       // Return created developer
       return res.status(201).json({

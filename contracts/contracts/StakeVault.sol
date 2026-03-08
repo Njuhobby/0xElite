@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /**
  * @title StakeVault
  * @notice Manages USDC stake deposits for developer membership on 0xElite platform
- * @dev UUPS Upgradeable - implements staking mechanism with minimum stake requirements
+ * @dev UUPS Upgradeable - owner (backend) stakes on behalf of developers
  */
 contract StakeVault is
     Initializable,
@@ -20,9 +20,6 @@ contract StakeVault is
 {
     /// @notice USDC token contract (not immutable in upgradeable contracts)
     IERC20 public stakeToken;
-
-    /// @notice Required minimum stake amount in USDC (6 decimals)
-    uint256 public requiredStake;
 
     /// @notice Mapping of developer addresses to their staked amounts
     mapping(address => uint256) public stakes;
@@ -40,11 +37,6 @@ contract StakeVault is
     /// @param amount Amount of USDC unstaked
     event Unstaked(address indexed developer, uint256 amount);
 
-    /// @notice Emitted when the required stake amount is updated
-    /// @param oldAmount Previous required stake
-    /// @param newAmount New required stake
-    event RequiredStakeUpdated(uint256 oldAmount, uint256 newAmount);
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         // call in implementation contract's constructor, so attackers won't be able to reinitialize the contract
@@ -54,21 +46,15 @@ contract StakeVault is
     /**
      * @notice Initialize the contract (replaces constructor)
      * @param _stakeToken Address of USDC token contract
-     * @param _requiredStake Initial required stake amount (e.g., 150 * 10^6 for 150 USDC)
      */
-    function initialize(
-        address _stakeToken,
-        uint256 _requiredStake
-    ) public initializer {
+    function initialize(address _stakeToken) public initializer {
         require(_stakeToken != address(0), "Invalid token address");
-        require(_requiredStake > 0, "Required stake must be positive");
 
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
         stakeToken = IERC20(_stakeToken);
-        requiredStake = _requiredStake;
     }
 
     /**
@@ -80,25 +66,23 @@ contract StakeVault is
         address newImplementation
     ) internal override onlyOwner {}
 
-    /// @notice Stake USDC to become a developer member
-    /// @param amount Amount of USDC to stake (first stake must be >= requiredStake)
-    function stake(uint256 amount) external nonReentrant {
+    /// @notice Stake USDC on behalf of a developer (owner-only, called by backend)
+    /// @param developer Address of the developer to stake for
+    /// @param amount Amount of USDC to stake
+    /// @dev Developer must have approved this contract for the given amount beforehand
+    function stake(address developer, uint256 amount) external onlyOwner nonReentrant {
+        require(developer != address(0), "Invalid developer address");
         require(amount > 0, "Amount must be positive");
 
-        // Only check minimum stake for first-time stakers
-        if (stakes[msg.sender] == 0) {
-            require(amount >= requiredStake, "Amount below required stake");
-        }
-
         require(
-            stakeToken.transferFrom(msg.sender, address(this), amount),
+            stakeToken.transferFrom(developer, address(this), amount),
             "Transfer failed"
         );
 
-        stakes[msg.sender] += amount;
-        stakedAt[msg.sender] = block.timestamp;
+        stakes[developer] += amount;
+        stakedAt[developer] = block.timestamp;
 
-        emit Staked(msg.sender, amount);
+        emit Staked(developer, amount);
     }
 
     /// @notice Withdraw staked USDC (owner-only, used by backend unlock service)
@@ -131,17 +115,6 @@ contract StakeVault is
     /// @return Current staked amount
     function getStake(address developer) external view returns (uint256) {
         return stakes[developer];
-    }
-
-    /// @notice Update required stake amount (owner only)
-    /// @param newAmount New required stake amount
-    function setRequiredStake(uint256 newAmount) external onlyOwner {
-        require(newAmount > 0, "Required stake must be positive");
-
-        uint256 oldAmount = requiredStake;
-        requiredStake = newAmount;
-
-        emit RequiredStakeUpdated(oldAmount, newAmount);
     }
 
     /**
