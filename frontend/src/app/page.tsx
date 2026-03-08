@@ -3,7 +3,7 @@
 import { ConnectWallet } from "@/components/ConnectWallet";
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 export default function Home() {
   const { address, isConnected } = useAccount();
@@ -193,27 +193,29 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 md:gap-0">
             {[
               { step: "01", title: "Submit Project", desc: "Describe your needs, budget, and timeline" },
               { step: "02", title: "Platform Review", desc: "We verify project quality and requirements" },
               { step: "03", title: "Team Assembly", desc: "Matched developers receive your invitation" },
               { step: "04", title: "Start Building", desc: "Milestone-based work with escrow protection" },
             ].map((item, i) => (
-              <div key={i} className="relative">
-                <div className="card p-6 text-center h-full">
-                  <div className="text-4xl font-bold gradient-text mb-4">{item.step}</div>
-                  <h3 className="text-lg font-semibold text-[#1F2937] mb-2">{item.title}</h3>
-                  <p className="text-[#6B7280] text-sm">{item.desc}</p>
+              <React.Fragment key={i}>
+                <div className="flex-1">
+                  <div className="card p-6 text-center h-full">
+                    <div className="text-4xl font-bold gradient-text mb-4">{item.step}</div>
+                    <h3 className="text-lg font-semibold text-[#1F2937] mb-2">{item.title}</h3>
+                    <p className="text-[#6B7280] text-sm">{item.desc}</p>
+                  </div>
                 </div>
                 {i < 3 && (
-                  <div className="hidden md:block absolute top-1/2 -right-3 transform -translate-y-1/2">
+                  <div className="hidden md:flex items-center justify-center px-2 shrink-0">
                     <svg className="w-6 h-6 text-[#8B5CF6]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
                 )}
-              </div>
+              </React.Fragment>
             ))}
           </div>
         </div>
