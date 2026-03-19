@@ -77,7 +77,7 @@ interface IEscrowVault {
 - **OpenZeppelin**: Ownable, ReentrancyGuard, SafeERC20
 
 **Configuration**:
-- Environment variables: USDC_TOKEN_ADDRESS, PROJECT_MANAGER_ADDRESS, TREASURY_ADDRESS, DISPUTE_DAO_ADDRESS
+- Environment variables: USDC_TOKEN_ADDRESS, PROJECT_MANAGER_ADDRESS, DISPUTE_DAO_ADDRESS
 - Access control: Only ProjectManager can release funds, only DisputeDAO can freeze/resolve
 - Gas optimization: Minimize storage writes, use events for off-chain indexing
 
