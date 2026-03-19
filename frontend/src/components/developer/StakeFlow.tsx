@@ -2,7 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { useWriteContract, useReadContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
-import { parseUnits, Address } from 'viem';
+import { Address } from 'viem';
+
+// Extract a user-friendly error message from wallet/viem errors
+function getShortErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  const msg = error.message;
+  if (msg.includes('User rejected') || msg.includes('User denied')) return 'Transaction was rejected by user';
+  if (msg.includes('insufficient funds')) return 'Insufficient funds for transaction';
+  if (msg.includes('insufficient allowance')) return 'Insufficient USDC allowance';
+  // Return first sentence only
+  const firstLine = msg.split('\n')[0];
+  return firstLine.length > 120 ? firstLine.slice(0, 120) + '...' : firstLine;
+}
 
 // Contract ABIs
 const USDC_ABI = [
@@ -28,12 +40,29 @@ const USDC_ABI = [
   },
 ] as const;
 
+const STAKE_VAULT_ABI = [
+  {
+    name: 'stake',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [],
+  },
+  {
+    name: 'requiredStake',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
 // Contract addresses from environment
 const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d') as Address;
 const STAKE_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_STAKE_VAULT_ADDRESS || '0x...') as Address;
 
-// Stake amount configured in frontend (business rule moved to application layer)
-const STAKE_AMOUNT = parseUnits('200', 6); // 200 USDC
+// Fallback stake amount from env (raw USDC base units, e.g. 200000000 = 200 USDC)
+const FALLBACK_STAKE_AMOUNT = BigInt(process.env.NEXT_PUBLIC_REQUIRED_STAKE || '200000000');
 
 interface FormData {
   email: string;
@@ -51,14 +80,23 @@ interface Props {
 }
 
 export default function StakeFlow({ address, formData, onBack, onSuccess }: Props) {
-  const [step, setStep] = useState<'approve' | 'submit'>('approve');
+  const [step, setStep] = useState<'approve' | 'stake' | 'submit'>('approve');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
 
   // Check if contract addresses are configured
   const isConfigured = STAKE_VAULT_ADDRESS !== '0x...' && !STAKE_VAULT_ADDRESS.includes('...');
 
-  // Check USDC allowance (developer approves StakeVault contract)
+  // Read required stake amount from contract
+  const { data: requiredStake } = useReadContract({
+    address: STAKE_VAULT_ADDRESS,
+    abi: STAKE_VAULT_ABI,
+    functionName: 'requiredStake',
+  });
+
+  const stakeAmount = requiredStake || FALLBACK_STAKE_AMOUNT;
+
+  // Check USDC allowance
   const { data: allowance } = useReadContract({
     address: USDC_ADDRESS,
     abi: USDC_ABI,
@@ -78,19 +116,43 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
     hash: approveHash,
   });
 
-  // Auto-advance to submit step after successful approve
+  // Stake
+  const {
+    data: stakeHash,
+    writeContract: stakeTokens,
+    isPending: isStakePending,
+    error: stakeError,
+  } = useWriteContract();
+
+  const { isLoading: isStaking, isSuccess: isStakeSuccess } = useWaitForTransactionReceipt({
+    hash: stakeHash,
+  });
+
+  // Auto-advance to next step after successful transactions
   useEffect(() => {
     if (isApproveSuccess && step === 'approve') {
-      setStep('submit');
+      setStep('stake');
     }
   }, [isApproveSuccess, step]);
+
+  useEffect(() => {
+    if (isStakeSuccess && step === 'stake') {
+      setStep('submit');
+    }
+  }, [isStakeSuccess, step]);
 
   // Display errors
   useEffect(() => {
     if (approveError) {
-      setError(approveError.message || 'Failed to approve USDC');
+      setError(getShortErrorMessage(approveError, 'Failed to approve USDC'));
     }
   }, [approveError]);
+
+  useEffect(() => {
+    if (stakeError) {
+      setError(getShortErrorMessage(stakeError, 'Failed to stake USDC'));
+    }
+  }, [stakeError]);
 
   // Sign message for backend
   const { signMessageAsync } = useSignMessage();
@@ -150,7 +212,17 @@ Timestamp: ${timestamp}`;
       address: USDC_ADDRESS,
       abi: USDC_ABI,
       functionName: 'approve',
-      args: [STAKE_VAULT_ADDRESS, STAKE_AMOUNT],
+      args: [STAKE_VAULT_ADDRESS, stakeAmount],
+    });
+  };
+
+  const handleStake = () => {
+    setError('');
+    stakeTokens({
+      address: STAKE_VAULT_ADDRESS,
+      abi: STAKE_VAULT_ABI,
+      functionName: 'stake',
+      args: [stakeAmount],
     });
   };
 
@@ -161,11 +233,11 @@ Timestamp: ${timestamp}`;
       const signature = await signMessageAsync({ message });
       await submitProfile(signature);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign message');
+      setError(getShortErrorMessage(err, 'Failed to sign message'));
     }
   };
 
-  const isAllowanceSufficient = allowance != null && BigInt(allowance.toString()) >= BigInt(STAKE_AMOUNT);
+  const isAllowanceSufficient = allowance != null && BigInt(allowance.toString()) >= BigInt(stakeAmount);
 
   return (
     <div className="space-y-6">
@@ -190,7 +262,7 @@ Timestamp: ${timestamp}`;
           <div>
             <p className="text-gray-400 text-sm">Required Stake</p>
             <p className="text-3xl font-bold text-white">
-              {(Number(STAKE_AMOUNT) / 1e6).toFixed(2)} USDC
+              {(Number(stakeAmount) / 1e6).toFixed(2)} USDC
             </p>
           </div>
           <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center">
@@ -233,15 +305,39 @@ Timestamp: ${timestamp}`;
           )}
         </div>
 
-        {/* Step 2: Submit Profile */}
+        {/* Step 2: Stake */}
+        <div className={`p-6 rounded-xl border ${step === 'stake' ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/10'}`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${step === 'submit' ? 'bg-green-600' : step === 'stake' ? 'bg-purple-600' : 'bg-white/20'} text-white font-bold`}>
+                {step === 'submit' ? '\u2713' : '2'}
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Stake USDC</h3>
+                <p className="text-gray-400 text-sm">Lock your stake in the contract</p>
+              </div>
+            </div>
+          </div>
+          {step === 'stake' && (
+            <button
+              onClick={handleStake}
+              disabled={!isConfigured || isStakePending || isStaking}
+              className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isStakePending || isStaking ? 'Staking...' : 'Stake USDC'}
+            </button>
+          )}
+        </div>
+
+        {/* Step 3: Submit Profile */}
         <div className={`p-6 rounded-xl border ${step === 'submit' ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/10'}`}>
           <div className="flex items-center mb-4">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${step === 'submit' ? 'bg-purple-600' : 'bg-white/20'} text-white font-bold`}>
-              2
+              3
             </div>
             <div>
-              <h3 className="text-white font-semibold">Sign & Submit Profile</h3>
-              <p className="text-gray-400 text-sm">Sign message to create your profile and trigger stake</p>
+              <h3 className="text-white font-semibold">Submit Profile</h3>
+              <p className="text-gray-400 text-sm">Sign message to create your profile</p>
             </div>
           </div>
           {step === 'submit' && (
@@ -258,8 +354,8 @@ Timestamp: ${timestamp}`;
 
       {/* Error Display */}
       {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500 rounded-lg">
-          <p className="text-red-400 text-sm">{error}</p>
+        <div className="p-4 bg-red-500/10 border border-red-500 rounded-lg overflow-hidden">
+          <p className="text-red-400 text-sm break-words">{error}</p>
         </div>
       )}
 
@@ -267,7 +363,7 @@ Timestamp: ${timestamp}`;
       <button
         onClick={onBack}
         className="w-full py-3 bg-white/10 rounded-lg text-white font-semibold hover:bg-white/20"
-        disabled={isProcessing || isApprovePending || isApproving}
+        disabled={isProcessing || isApprovePending || isApproving || isStakePending || isStaking}
       >
         {'\u2190'} Back to Form
       </button>

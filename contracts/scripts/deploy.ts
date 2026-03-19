@@ -7,6 +7,7 @@ async function main() {
   // Get configuration from environment or use defaults
   const USDC_ADDRESS = process.env.USDC_ADDRESS || "";
   const TREASURY_ADDRESS = deployer.address;
+  const REQUIRED_STAKE = process.env.REQUIRED_STAKE || "200000000"; // 200 USDC (6 decimals)
   const PLATFORM_FEE_BPS = parseInt(process.env.PLATFORM_FEE_BPS || "1000"); // 1000 = 10%
 
   if (!USDC_ADDRESS) {
@@ -17,7 +18,7 @@ async function main() {
   const StakeVault = await ethers.getContractFactory("StakeVault");
   const stakeVault = await upgrades.deployProxy(
     StakeVault,
-    [USDC_ADDRESS],
+    [USDC_ADDRESS, REQUIRED_STAKE],
     { kind: "uups" }
   );
   await stakeVault.waitForDeployment();
