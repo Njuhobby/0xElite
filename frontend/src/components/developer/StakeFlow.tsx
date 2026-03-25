@@ -61,8 +61,8 @@ const STAKE_VAULT_ABI = [
 const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d') as Address;
 const STAKE_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_STAKE_VAULT_ADDRESS || '0x...') as Address;
 
-// Fallback stake amount from env (raw USDC base units, e.g. 200000000 = 200 USDC)
-const FALLBACK_STAKE_AMOUNT = BigInt(process.env.NEXT_PUBLIC_REQUIRED_STAKE || '200000000');
+// Fallback stake amount (raw USDC base units, e.g. 200000000 = 200 USDC)
+const FALLBACK_STAKE_AMOUNT = BigInt('200000000');
 
 interface FormData {
   email: string;
