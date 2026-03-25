@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useWriteContract, useReadContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
 import { Address } from 'viem';
+import { targetChain } from '@/config/wagmi';
 
 // Extract a user-friendly error message from wallet/viem errors
 function getShortErrorMessage(error: unknown, fallback: string): string {
@@ -167,13 +168,11 @@ Wallet: ${address}
 Timestamp: ${timestamp}`;
   };
 
-  const submitProfile = async (signature: string) => {
+  const submitProfileWithMessage = async (signature: string, message: string) => {
     setIsProcessing(true);
     setError('');
 
     try {
-      const message = generateMessage();
-
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers`, {
         method: 'POST',
         headers: {
@@ -213,6 +212,7 @@ Timestamp: ${timestamp}`;
       abi: USDC_ABI,
       functionName: 'approve',
       args: [STAKE_VAULT_ADDRESS, stakeAmount],
+      chainId: targetChain.id,
     });
   };
 
@@ -223,6 +223,7 @@ Timestamp: ${timestamp}`;
       abi: STAKE_VAULT_ABI,
       functionName: 'stake',
       args: [stakeAmount],
+      chainId: targetChain.id,
     });
   };
 
@@ -231,7 +232,7 @@ Timestamp: ${timestamp}`;
     try {
       const message = generateMessage();
       const signature = await signMessageAsync({ message });
-      await submitProfile(signature);
+      await submitProfileWithMessage(signature, message);
     } catch (err) {
       setError(getShortErrorMessage(err, 'Failed to sign message'));
     }
