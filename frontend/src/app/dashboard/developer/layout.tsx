@@ -97,14 +97,8 @@ export default function DeveloperDashboardLayout({
         <div className="bg-white/10 backdrop-blur-lg rounded-xl p-8 max-w-md">
           <h2 className="text-2xl font-bold text-white mb-4">Application Pending</h2>
           <p className="text-gray-300 mb-6">
-            Your developer application is pending. Please complete the staking process to activate your account.
+            Your developer application is under review. An admin will review and approve your account shortly.
           </p>
-          <Link
-            href="/apply"
-            className="block w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg text-white font-semibold text-center hover:shadow-lg transition-shadow"
-          >
-            Complete Application
-          </Link>
           <Link
             href="/"
             className="block w-full py-3 mt-3 bg-white/10 rounded-lg text-white font-semibold text-center hover:bg-white/20 transition-colors"
