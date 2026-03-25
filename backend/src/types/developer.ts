@@ -12,6 +12,9 @@ export interface Developer {
   admin_notes: string | null;
   reviewed_by: string | null;
   reviewed_at: Date | null;
+  unlock_tier: number | null;
+  total_unlocked: string | null;
+  last_unlock_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }

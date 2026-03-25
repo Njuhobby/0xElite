@@ -135,7 +135,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Create project on blockchain first
     const budgetInBaseUnits = ethers.parseUnits(totalBudget.toString(), 6); // USDC has 6 decimals
-    const tx = await projectManagerContract.createProject(budgetInBaseUnits);
+    const tx = await (projectManagerContract as any).createProject(budgetInBaseUnits);
     const receipt = await tx.wait();
 
     // Extract project ID from event
@@ -148,7 +148,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
     });
 
-    const parsedEvent = projectManagerContract.interface.parseLog(event);
+    const parsedEvent = projectManagerContract.interface.parseLog(event)!;
     const contractProjectId = parsedEvent.args.projectId;
 
     logger.info('Project created on-chain', {
@@ -281,11 +281,11 @@ router.get('/:id', async (req: Request, res: Response) => {
           address: dev.wallet_address,
           githubUsername: dev.github_username,
           skills: dev.skills,
-        };
+        } as any;
 
         // Include email for client or assigned developer
         if (isOwner || isAssignedDev) {
-          developerInfo.email = dev.email;
+          (developerInfo as any).email = dev.email;
         }
       }
     }
@@ -614,7 +614,7 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    const parsedEvent = projectManagerContract.interface.parseLog(event);
+    const parsedEvent = projectManagerContract.interface.parseLog(event)!;
     const contractProjectId = parsedEvent.args.projectId.toString();
 
     logger.info('Registering V2 project', {

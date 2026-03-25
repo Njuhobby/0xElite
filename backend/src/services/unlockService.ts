@@ -96,7 +96,7 @@ export async function checkAndExecuteUnlock(
     provider
   );
 
-  const onChainStake = await stakeVaultContract.stakes(normalizedAddress);
+  const onChainStake = await (stakeVaultContract as any).stakes(normalizedAddress);
   if (BigInt(onChainStake) < totalToUnlockRaw) {
     logger.error(
       `[UnlockService] On-chain stake insufficient for ${normalizedAddress}: ` +
@@ -130,7 +130,7 @@ export async function checkAndExecuteUnlock(
         `developer=${normalizedAddress}, amount=${totalToUnlockRaw}`
       );
 
-      const tx = await stakeVaultWithSigner.unstakeFor(normalizedAddress, totalToUnlockRaw);
+      const tx = await (stakeVaultWithSigner as any).unstakeFor(normalizedAddress, totalToUnlockRaw);
       logger.info(`[UnlockService] Tx submitted: ${tx.hash}`);
 
       const receipt = await tx.wait(eventSyncConfig.confirmations);

@@ -154,7 +154,7 @@ router.put('/developers/:address/approve', async (req, res) => {
       [notes || null, adminAddress, walletAddress]
     );
 
-    const updated = result.rows[0];
+    const updated = result.rows[0]!;
 
     return res.json({
       message: 'Developer approved successfully',
@@ -238,7 +238,7 @@ router.put('/developers/:address/reject', async (req, res) => {
       [reason.trim(), adminAddress, walletAddress]
     );
 
-    const updated = result.rows[0];
+    const updated = result.rows[0]!;
 
     return res.json({
       message: 'Developer rejected',

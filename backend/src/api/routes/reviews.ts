@@ -111,7 +111,7 @@ router.post('/', async (req, res) => {
         [input.projectId, reviewerAddress, revieweeAddress, reviewerType, input.rating, input.comment || null]
       );
 
-      const review = result.rows[0];
+      const review = result.rows[0]!;
 
       return res.status(201).json({
         id: review.id,
@@ -162,7 +162,7 @@ router.get('/developer/:address', async (req, res) => {
       });
     }
 
-    const dev = devResult.rows[0];
+    const dev = devResult.rows[0]!;
 
     // Fetch reviews where this developer is the reviewee (reviewed by clients)
     const reviewsResult = await pool.query<Review & { title: string }>(
@@ -477,7 +477,7 @@ router.put('/:id', async (req, res) => {
         values
       );
 
-      const updated = result.rows[0];
+      const updated = result.rows[0]!;
       const canEdit = (Date.now() - new Date(updated.created_at).getTime()) / (1000 * 60 * 60 * 24) <= EDIT_WINDOW_DAYS;
 
       return res.json({

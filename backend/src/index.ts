@@ -12,7 +12,7 @@ import escrowRouter, { initialize as initializeEscrow } from './api/routes/escro
 import reviewsRouter from './api/routes/reviews';
 import disputesRouter from './api/routes/disputes';
 import adminRouter from './api/routes/admin';
-import { databaseConfig } from './config/database';
+import { pool } from './config/database';
 import { startMilestoneListener } from './services/eventListeners/milestoneListener';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -21,7 +21,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Initialize database connection
-const db = new Pool(databaseConfig);
+const db = pool;
 
 // Initialize blockchain connection and contract
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);

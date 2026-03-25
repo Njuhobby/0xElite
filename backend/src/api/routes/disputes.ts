@@ -107,7 +107,7 @@ router.post('/', async (req, res) => {
         ]
       );
 
-      const dispute = result.rows[0];
+      const dispute = result.rows[0]!;
 
       return res.status(201).json(formatDispute(dispute));
     } finally {

@@ -102,7 +102,7 @@ router.post('/', async (req, res) => {
         ]
       );
 
-      const developer = result.rows[0];
+      const developer = result.rows[0]!;
 
       // Return created developer
       return res.status(201).json({
@@ -151,7 +151,7 @@ router.get('/:address', async (req, res) => {
       });
     }
 
-    const developer = result.rows[0];
+    const developer = result.rows[0]!;
 
     // Check if requesting user is the owner (via optional auth header)
     const requestingAddress = req.headers['x-wallet-address'] as string | undefined;
@@ -251,7 +251,7 @@ router.put('/:address', async (req, res) => {
       }
 
       // Check if email is being changed and if new email already exists
-      if (input.email && input.email !== existing.rows[0].email) {
+      if (input.email && input.email !== existing.rows[0]!.email) {
         const existingEmail = await client.query(
           'SELECT wallet_address FROM developers WHERE email = $1 AND wallet_address != $2',
           [input.email, walletAddress]
@@ -297,7 +297,7 @@ router.put('/:address', async (req, res) => {
 
       if (updates.length === 0) {
         // No fields to update, return current profile
-        const developer = existing.rows[0];
+        const developer = existing.rows[0]!;
         return res.json({
           walletAddress: developer.wallet_address,
           email: developer.email,
@@ -322,7 +322,7 @@ router.put('/:address', async (req, res) => {
         values
       );
 
-      const developer = result.rows[0];
+      const developer = result.rows[0]!;
 
       return res.json({
         walletAddress: developer.wallet_address,

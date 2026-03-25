@@ -36,7 +36,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    const clientAddress = address.toLowerCase();
+    const clientAddress = (address as string).toLowerCase();
 
     // Check if email is already used by another client
     if (email) {
@@ -78,7 +78,7 @@ router.post('/', async (req: Request, res: Response) => {
       ]
     );
 
-    const client = result.rows[0];
+    const client = result.rows[0]!;
 
     res.status(201).json({
       walletAddress: client.wallet_address,
@@ -109,7 +109,7 @@ router.get('/:address', async (req: Request, res: Response) => {
     const { address } = req.params;
     const viewerAddress = req.headers['x-wallet-address'] as string | undefined;
 
-    const clientAddress = address.toLowerCase();
+    const clientAddress = (address as string).toLowerCase();
 
     const result = await db.query(
       'SELECT * FROM clients WHERE wallet_address = $1',
@@ -123,7 +123,7 @@ router.get('/:address', async (req: Request, res: Response) => {
       });
     }
 
-    const client = result.rows[0];
+    const client = result.rows[0]!;
     const isOwner = viewerAddress?.toLowerCase() === clientAddress;
 
     // Public view (hide email)

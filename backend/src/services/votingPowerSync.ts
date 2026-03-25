@@ -44,7 +44,7 @@ export class VotingPowerSync {
         return;
       }
 
-      const dev = result.rows[0];
+      const dev = result.rows[0]!;
       const targetBalance = Math.floor(parseFloat(dev.voting_power) * 1e6); // 6 decimals
       const currentOnChain = await this.eliteToken.balanceOf(walletAddress);
       const currentBalance = Number(currentOnChain);
