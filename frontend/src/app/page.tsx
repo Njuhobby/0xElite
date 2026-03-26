@@ -16,7 +16,18 @@ export default function Home() {
     const checkUserStatus = async () => {
       setCheckingDeveloper(true);
       try {
-        // Check developer status first (developer dashboard takes priority for dual-role)
+        // Check admin status first (admin dashboard takes highest priority)
+        const adminAddresses = (process.env.NEXT_PUBLIC_ADMIN_ADDRESSES || '')
+          .split(',')
+          .map((a) => a.trim().toLowerCase())
+          .filter((a) => a.length > 0);
+
+        if (adminAddresses.includes(address.toLowerCase())) {
+          router.push('/dashboard/admin');
+          return;
+        }
+
+        // Check developer status (developer dashboard takes priority for dual-role)
         const devResponse = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`
         );
