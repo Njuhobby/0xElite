@@ -22,11 +22,8 @@ export default function Home() {
         );
 
         if (devResponse.ok) {
-          const devData = await devResponse.json();
-          if (devData.status === 'active') {
-            router.push('/dashboard/developer');
-            return;
-          }
+          router.push('/dashboard/developer');
+          return;
         }
 
         // If not an active developer, check client status

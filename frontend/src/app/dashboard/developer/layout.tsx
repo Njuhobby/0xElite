@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useDisconnect } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -12,6 +12,7 @@ export default function DeveloperDashboardLayout({
   children: React.ReactNode;
 }) {
   const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
   const router = useRouter();
   const pathname = usePathname();
   const [developerStatus, setDeveloperStatus] = useState<'loading' | 'active' | 'staked' | 'rejected' | 'pending' | 'unauthorized'>('loading');
@@ -76,12 +77,15 @@ export default function DeveloperDashboardLayout({
           >
             Apply as Developer
           </Link>
-          <Link
-            href="/"
+          <button
+            onClick={() => {
+              disconnect();
+              router.push('/');
+            }}
             className="block w-full py-3 mt-3 bg-white/10 rounded-lg text-white font-semibold text-center hover:bg-white/20 transition-colors"
           >
             Back to Home
-          </Link>
+          </button>
         </div>
       </div>
     );
@@ -99,12 +103,15 @@ export default function DeveloperDashboardLayout({
           <p className="text-gray-300 mb-6">
             Your developer application is under review. An admin will review and approve your account shortly.
           </p>
-          <Link
-            href="/"
+          <button
+            onClick={() => {
+              disconnect();
+              router.push('/');
+            }}
             className="block w-full py-3 mt-3 bg-white/10 rounded-lg text-white font-semibold text-center hover:bg-white/20 transition-colors"
           >
             Back to Home
-          </Link>
+          </button>
         </div>
       </div>
     );

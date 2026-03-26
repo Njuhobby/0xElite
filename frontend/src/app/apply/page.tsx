@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import DeveloperApplicationForm from '@/components/developer/DeveloperApplicationForm';
@@ -11,6 +11,25 @@ export default function ApplyPage() {
   const router = useRouter();
   const [step, setStep] = useState<'form' | 'stake'>('form');
   const [formData, setFormData] = useState<any>(null);
+
+  useEffect(() => {
+    if (!isConnected || !address) return;
+
+    const checkExisting = async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`
+        );
+        if (res.ok) {
+          router.push('/dashboard/developer');
+        }
+      } catch {
+        // Not registered — allow application
+      }
+    };
+
+    checkExisting();
+  }, [address, isConnected, router]);
 
   if (!isConnected) {
     return (
