@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "start:listener": "node dist/listener.js",
     "migrate": "ts-node src/db/migrate.ts",
+    "reset-dev": "ts-node src/db/reset-dev.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
