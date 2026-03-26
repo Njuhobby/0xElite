@@ -45,26 +45,36 @@ function verifyAdmin(
 
 /**
  * GET /api/admin/developers
- * List staked developers awaiting admin review (paginated)
+ * List all developers for admin review (paginated, optional status filter)
  */
 router.get('/developers', async (req, res) => {
   try {
-    const { page = '1', limit = '20' } = req.query;
+    const { page = '1', limit = '20', status } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string)));
     const offset = (pageNum - 1) * limitNum;
 
+    const validStatuses = ['pending', 'staked', 'active', 'rejected', 'suspended'];
+    const filterStatus = typeof status === 'string' && validStatuses.includes(status) ? status : null;
+
+    const whereClause = filterStatus ? `WHERE status = $1` : '';
+    const countParams = filterStatus ? [filterStatus] : [];
+
     const countResult = await pool.query(
-      `SELECT COUNT(*) FROM developers WHERE status = 'staked'`
+      `SELECT COUNT(*) FROM developers ${whereClause}`,
+      countParams
     );
     const total = parseInt(countResult.rows[0].count);
 
+    const queryParams = filterStatus
+      ? [filterStatus, limitNum, offset]
+      : [limitNum, offset];
     const result = await pool.query<Developer>(
-      `SELECT * FROM developers WHERE status = 'staked'
+      `SELECT * FROM developers ${whereClause}
        ORDER BY created_at DESC
-       LIMIT $1 OFFSET $2`,
-      [limitNum, offset]
+       LIMIT $${filterStatus ? 2 : 1} OFFSET $${filterStatus ? 3 : 2}`,
+      queryParams
     );
 
     const developers = result.rows.map((dev) => ({
@@ -90,7 +100,7 @@ router.get('/developers', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error listing staked developers:', error);
+    console.error('Error listing developers:', error);
     return res.status(500).json({
       error: 'INTERNAL_ERROR',
       message: 'An unexpected error occurred',

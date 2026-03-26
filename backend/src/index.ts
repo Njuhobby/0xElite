@@ -14,6 +14,7 @@ import disputesRouter from './api/routes/disputes';
 import adminRouter from './api/routes/admin';
 import { pool } from './config/database';
 import { startMilestoneListener } from './services/eventListeners/milestoneListener';
+import { startEventListeners as startStakeListener } from './services/eventListeners/stakeListener';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -146,6 +147,14 @@ app.listen(PORT, async () => {
     } catch (error) {
       console.error('Failed to start milestone event listener:', error);
     }
+  }
+
+  // Start stake event listener
+  try {
+    await startStakeListener();
+    console.log('✓ Stake event listener started');
+  } catch (error) {
+    console.error('Failed to start stake event listener:', error);
   }
 });
 

@@ -95,7 +95,11 @@ export default function AdminDashboardPage() {
       }
 
       setSuccessMessage(`Developer ${developerAddress.slice(0, 6)}...${developerAddress.slice(-4)} approved`);
-      setDevelopers((prev) => prev.filter((d) => d.walletAddress !== developerAddress.toLowerCase()));
+      setDevelopers((prev) =>
+        prev.map((d) =>
+          d.walletAddress === developerAddress.toLowerCase() ? { ...d, status: 'active' } : d
+        )
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -134,7 +138,11 @@ export default function AdminDashboardPage() {
       }
 
       setSuccessMessage(`Developer ${developerAddress.slice(0, 6)}...${developerAddress.slice(-4)} rejected`);
-      setDevelopers((prev) => prev.filter((d) => d.walletAddress !== developerAddress.toLowerCase()));
+      setDevelopers((prev) =>
+        prev.map((d) =>
+          d.walletAddress === developerAddress.toLowerCase() ? { ...d, status: 'rejected' } : d
+        )
+      );
       setShowRejectInput(null);
       setRejectReason((prev) => {
         const next = { ...prev };
@@ -195,8 +203,8 @@ export default function AdminDashboardPage() {
         {/* Empty State */}
         {!loading && developers.length === 0 && (
           <div className="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-12 text-center">
-            <h2 className="text-xl font-semibold text-white mb-2">No Pending Applications</h2>
-            <p className="text-gray-400">All staked developers have been reviewed.</p>
+            <h2 className="text-xl font-semibold text-white mb-2">No Developers</h2>
+            <p className="text-gray-400">No developer applications yet.</p>
           </div>
         )}
 
@@ -221,6 +229,15 @@ export default function AdminDashboardPage() {
                         </h3>
                         <p className="text-gray-400 font-mono text-xs">{dev.walletAddress}</p>
                       </div>
+                      <span className={`ml-auto px-3 py-1 rounded-full text-xs font-semibold ${
+                        dev.status === 'active' ? 'bg-green-600/20 border border-green-500/30 text-green-300' :
+                        dev.status === 'staked' ? 'bg-yellow-600/20 border border-yellow-500/30 text-yellow-300' :
+                        dev.status === 'pending' ? 'bg-blue-600/20 border border-blue-500/30 text-blue-300' :
+                        dev.status === 'rejected' ? 'bg-red-600/20 border border-red-500/30 text-red-300' :
+                        'bg-gray-600/20 border border-gray-500/30 text-gray-300'
+                      }`}>
+                        {dev.status}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -275,53 +292,55 @@ export default function AdminDashboardPage() {
                     )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex flex-col gap-2 lg:min-w-[200px]">
-                    <button
-                      onClick={() => handleApprove(dev.walletAddress)}
-                      disabled={actionLoading === dev.walletAddress}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-white font-semibold transition-colors"
-                    >
-                      {actionLoading === dev.walletAddress ? 'Processing...' : 'Approve'}
-                    </button>
-
-                    {showRejectInput === dev.walletAddress ? (
-                      <div className="space-y-2">
-                        <textarea
-                          value={rejectReason[dev.walletAddress] || ''}
-                          onChange={(e) =>
-                            setRejectReason((prev) => ({ ...prev, [dev.walletAddress]: e.target.value }))
-                          }
-                          placeholder="Rejection reason (required)"
-                          className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white text-sm placeholder-gray-500 resize-none"
-                          rows={2}
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleReject(dev.walletAddress)}
-                            disabled={actionLoading === dev.walletAddress}
-                            className="flex-1 px-3 py-1.5 bg-red-700 hover:bg-red-800 disabled:opacity-50 rounded-lg text-white text-sm font-semibold transition-colors"
-                          >
-                            Confirm Reject
-                          </button>
-                          <button
-                            onClick={() => setShowRejectInput(null)}
-                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
+                  {/* Actions — only for staked developers */}
+                  {dev.status === 'staked' && (
+                    <div className="flex flex-col gap-2 lg:min-w-[200px]">
                       <button
-                        onClick={() => setShowRejectInput(dev.walletAddress)}
+                        onClick={() => handleApprove(dev.walletAddress)}
                         disabled={actionLoading === dev.walletAddress}
-                        className="px-4 py-2 bg-red-700 hover:bg-red-800 disabled:opacity-50 rounded-lg text-white font-semibold transition-colors"
+                        className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-white font-semibold transition-colors"
                       >
-                        Reject
+                        {actionLoading === dev.walletAddress ? 'Processing...' : 'Approve'}
                       </button>
-                    )}
-                  </div>
+
+                      {showRejectInput === dev.walletAddress ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={rejectReason[dev.walletAddress] || ''}
+                            onChange={(e) =>
+                              setRejectReason((prev) => ({ ...prev, [dev.walletAddress]: e.target.value }))
+                            }
+                            placeholder="Rejection reason (required)"
+                            className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white text-sm placeholder-gray-500 resize-none"
+                            rows={2}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleReject(dev.walletAddress)}
+                              disabled={actionLoading === dev.walletAddress}
+                              className="flex-1 px-3 py-1.5 bg-red-700 hover:bg-red-800 disabled:opacity-50 rounded-lg text-white text-sm font-semibold transition-colors"
+                            >
+                              Confirm Reject
+                            </button>
+                            <button
+                              onClick={() => setShowRejectInput(null)}
+                              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setShowRejectInput(dev.walletAddress)}
+                          disabled={actionLoading === dev.walletAddress}
+                          className="px-4 py-2 bg-red-700 hover:bg-red-800 disabled:opacity-50 rounded-lg text-white font-semibold transition-colors"
+                        >
+                          Reject
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
