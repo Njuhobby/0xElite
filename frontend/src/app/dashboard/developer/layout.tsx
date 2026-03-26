@@ -168,14 +168,17 @@ export default function DeveloperDashboardLayout({
               <span className="font-medium">Client Dashboard</span>
             </Link>
 
-            {/* Main Site Link */}
-            <Link
-              href="/"
-              className="flex items-center gap-3 px-4 py-3 rounded-lg mb-2 text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+            {/* Disconnect & Home */}
+            <button
+              onClick={() => {
+                disconnect();
+                router.push('/');
+              }}
+              className="flex items-center gap-3 px-4 py-3 rounded-lg mb-2 text-gray-300 hover:bg-white/10 hover:text-white transition-colors w-full text-left"
             >
               <span className="text-xl">🏠</span>
-              <span className="font-medium">Main Site</span>
-            </Link>
+              <span className="font-medium">Back to Home</span>
+            </button>
           </nav>
         </aside>
 

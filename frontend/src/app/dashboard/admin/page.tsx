@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount, useSignMessage, useDisconnect } from 'wagmi';
+import { useRouter } from 'next/navigation';
 
 interface StakedDeveloper {
   walletAddress: string;
@@ -26,6 +27,8 @@ interface Pagination {
 export default function AdminDashboardPage() {
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  const { disconnect } = useDisconnect();
+  const router = useRouter();
 
   const [developers, setDevelopers] = useState<StakedDeveloper[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -176,9 +179,20 @@ export default function AdminDashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-[#0A0A1B] via-[#1a0a2e] to-[#0A0A1B] py-12 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
-          <p className="text-gray-300">Review and manage developer applications</p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
+            <p className="text-gray-300">Review and manage developer applications</p>
+          </div>
+          <button
+            onClick={() => {
+              disconnect();
+              router.push('/');
+            }}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white font-medium transition-colors"
+          >
+            Back to Home
+          </button>
         </div>
 
         {/* Messages */}
