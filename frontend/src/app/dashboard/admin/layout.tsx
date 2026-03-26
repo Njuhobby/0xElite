@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import DashboardShell, { Icons } from '@/components/dashboard/DashboardShell';
@@ -12,8 +13,13 @@ export default function AdminDashboardLayout({
   const { isConnected } = useAccount();
   const router = useRouter();
 
+  useEffect(() => {
+    if (!isConnected) {
+      router.push('/');
+    }
+  }, [isConnected, router]);
+
   if (!isConnected) {
-    router.push('/');
     return null;
   }
 
