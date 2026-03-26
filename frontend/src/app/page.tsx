@@ -50,7 +50,8 @@ export default function Home() {
     };
 
     checkUserStatus();
-  }, [address, isConnected, router, checkingDeveloper]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, isConnected, router]);
   return (
     <div className="min-h-screen bg-[#FAFAFA] bg-lines">
       {/* Navigation */}
