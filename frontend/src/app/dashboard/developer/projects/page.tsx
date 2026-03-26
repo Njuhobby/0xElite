@@ -26,11 +26,6 @@ export default function DeveloperProjectsPage() {
     try {
       setLoading(true);
       // TODO: Implement API endpoint to fetch developer's projects
-      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/developers/${address}/projects`);
-      // const data = await response.json();
-      // setProjects(data);
-
-      // Placeholder empty state for now
       setProjects([]);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
@@ -39,69 +34,72 @@ export default function DeveloperProjectsPage() {
     }
   };
 
-  const statusColors = {
-    open: 'bg-blue-500',
-    assigned: 'bg-purple-500',
-    in_progress: 'bg-yellow-500',
-    completed: 'bg-green-500',
-    cancelled: 'bg-red-500',
+  const statusConfig: Record<string, { color: string; label: string }> = {
+    open: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Open' },
+    assigned: { color: 'bg-violet-50 text-violet-700 border-violet-200', label: 'Assigned' },
+    in_progress: { color: 'bg-amber-50 text-amber-700 border-amber-200', label: 'In Progress' },
+    completed: { color: 'bg-green-50 text-green-700 border-green-200', label: 'Completed' },
+    cancelled: { color: 'bg-red-50 text-red-700 border-red-200', label: 'Cancelled' },
   };
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">My Projects</h1>
-        <p className="text-gray-300">View and manage your assigned projects</p>
+    <div className="max-w-4xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">My Projects</h1>
+        <p className="text-gray-500 text-sm mt-1">View and manage your assigned projects</p>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="text-white text-xl">Loading projects...</div>
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-gray-600">Loading projects...</span>
+          </div>
         </div>
       ) : projects.length === 0 ? (
-        <div className="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-12 text-center">
-          <div className="w-16 h-16 bg-purple-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
+          <div className="w-14 h-14 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">No Projects Yet</h3>
-          <p className="text-gray-400 mb-6">
-            You haven't been assigned to any projects yet. Check back later or browse available projects.
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Projects Yet</h3>
+          <p className="text-gray-500 text-sm mb-6">
+            You haven&apos;t been assigned to any projects yet. Check back later or browse available projects.
           </p>
           <Link
             href="/projects"
-            className="inline-block px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg text-white font-semibold hover:shadow-lg transition-shadow"
+            className="inline-flex items-center px-5 py-2.5 bg-violet-600 rounded-lg text-white text-sm font-semibold hover:bg-violet-700 transition-colors"
           >
             Browse Projects
           </Link>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {projects.map((project) => (
             <div
               key={project.id}
-              className="bg-white/5 backdrop-blur-lg rounded-xl border border-white/10 p-6 hover:bg-white/10 transition-colors"
+              className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:border-violet-200 transition-colors"
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-xl font-semibold text-white mb-1">{project.title}</h3>
-                  <p className="text-gray-400 text-sm">{project.description}</p>
+                  <h3 className="text-base font-semibold text-gray-900">{project.title}</h3>
+                  <p className="text-gray-500 text-sm mt-0.5">{project.description}</p>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold text-white ${statusColors[project.status]}`}>
-                  {project.status.replace('_', ' ')}
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusConfig[project.status]?.color || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                  {statusConfig[project.status]?.label || project.status}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm">Budget</p>
-                  <p className="text-white font-semibold">${project.budget} USDC</p>
+                  <p className="text-xs text-gray-400">Budget</p>
+                  <p className="text-gray-900 font-semibold text-sm">${project.budget} USDC</p>
                 </div>
                 <Link
                   href={`/projects/${project.id}`}
-                  className="px-4 py-2 bg-purple-600 rounded-lg text-white font-medium hover:bg-purple-700 transition-colors"
+                  className="text-sm text-violet-600 hover:text-violet-700 font-medium"
                 >
-                  View Details
+                  View Details &rarr;
                 </Link>
               </div>
             </div>

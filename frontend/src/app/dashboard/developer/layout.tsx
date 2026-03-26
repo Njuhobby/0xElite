@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAccount, useDisconnect } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import DashboardShell, { Icons } from '@/components/dashboard/DashboardShell';
 
 export default function DeveloperDashboardLayout({
   children,
@@ -14,7 +14,6 @@ export default function DeveloperDashboardLayout({
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const router = useRouter();
-  const pathname = usePathname();
   const [developerStatus, setDeveloperStatus] = useState<'loading' | 'active' | 'staked' | 'rejected' | 'pending' | 'unauthorized'>('loading');
 
   useEffect(() => {
@@ -23,7 +22,6 @@ export default function DeveloperDashboardLayout({
       return;
     }
 
-    // Check if connected wallet is a registered developer
     const checkDeveloperStatus = async () => {
       try {
         const response = await fetch(
@@ -53,27 +51,35 @@ export default function DeveloperDashboardLayout({
     checkDeveloperStatus();
   }, [address, isConnected, router]);
 
-  // Show loading state
+  // Loading state
   if (developerStatus === 'loading') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-800 flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-gray-600 text-lg">Loading...</span>
+        </div>
       </div>
     );
   }
 
-  // Show unauthorized state
+  // Unauthorized state
   if (developerStatus === 'unauthorized') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-800 flex items-center justify-center">
-        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-8 max-w-md">
-          <h2 className="text-2xl font-bold text-white mb-4">Access Denied</h2>
-          <p className="text-gray-300 mb-6">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 max-w-md text-center">
+          <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-500 mb-6">
             You need to be an active developer to access this dashboard.
           </p>
           <Link
             href="/apply"
-            className="block w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg text-white font-semibold text-center hover:shadow-lg transition-shadow"
+            className="block w-full py-3 bg-violet-600 rounded-xl text-white font-semibold text-center hover:bg-violet-700 transition-colors"
           >
             Apply as Developer
           </Link>
@@ -82,7 +88,7 @@ export default function DeveloperDashboardLayout({
               disconnect();
               router.push('/');
             }}
-            className="block w-full py-3 mt-3 bg-white/10 rounded-lg text-white font-semibold text-center hover:bg-white/20 transition-colors"
+            className="block w-full py-3 mt-3 bg-gray-100 rounded-xl text-gray-700 font-semibold text-center hover:bg-gray-200 transition-colors"
           >
             Back to Home
           </button>
@@ -91,16 +97,18 @@ export default function DeveloperDashboardLayout({
     );
   }
 
-  // Staked and rejected developers can see the dashboard (with status messages)
-  // so we fall through to the main layout below
-
-  // Show pending state
+  // Pending state
   if (developerStatus === 'pending') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-800 flex items-center justify-center">
-        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-8 max-w-md">
-          <h2 className="text-2xl font-bold text-white mb-4">Application Pending</h2>
-          <p className="text-gray-300 mb-6">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 max-w-md text-center">
+          <div className="w-14 h-14 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Application Pending</h2>
+          <p className="text-gray-500 mb-6">
             Your developer application is under review. An admin will review and approve your account shortly.
           </p>
           <button
@@ -108,7 +116,7 @@ export default function DeveloperDashboardLayout({
               disconnect();
               router.push('/');
             }}
-            className="block w-full py-3 mt-3 bg-white/10 rounded-lg text-white font-semibold text-center hover:bg-white/20 transition-colors"
+            className="block w-full py-3 bg-gray-100 rounded-xl text-gray-700 font-semibold text-center hover:bg-gray-200 transition-colors"
           >
             Back to Home
           </button>
@@ -117,76 +125,20 @@ export default function DeveloperDashboardLayout({
     );
   }
 
-  // Navigation items
   const navItems = [
-    { name: 'Profile', href: '/dashboard/developer', icon: '👤' },
-    { name: 'Projects', href: '/dashboard/developer/projects', icon: '📁' },
-    { name: 'Disputes', href: '/disputes', icon: '⚖️' },
-    { name: 'Settings', href: '/dashboard/developer/settings', icon: '⚙️' },
+    { name: 'Profile', href: '/dashboard/developer', icon: Icons.profile },
+    { name: 'Projects', href: '/dashboard/developer/projects', icon: Icons.projects },
+    { name: 'Disputes', href: '/disputes', icon: Icons.disputes },
+    { name: 'Settings', href: '/dashboard/developer/settings', icon: Icons.settings },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-800">
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 min-h-screen bg-white/10 backdrop-blur-lg border-r border-white/20">
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-white mb-2">Developer Dashboard</h1>
-            <p className="text-gray-300 text-sm">
-              {address?.slice(0, 6)}...{address?.slice(-4)}
-            </p>
-          </div>
-
-          <nav className="px-3">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/dashboard/developer' && pathname.startsWith(item.href));
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-2 transition-colors ${
-                    isActive
-                      ? 'bg-white/20 text-white'
-                      : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                  }`}
-                >
-                  <span className="text-xl">{item.icon}</span>
-                  <span className="font-medium">{item.name}</span>
-                </Link>
-              );
-            })}
-
-            <div className="border-t border-white/20 my-4"></div>
-
-            {/* Client Dashboard Link */}
-            <Link
-              href="/dashboard/client"
-              className="flex items-center gap-3 px-4 py-3 rounded-lg mb-2 text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
-            >
-              <span className="text-xl">💼</span>
-              <span className="font-medium">Client Dashboard</span>
-            </Link>
-
-            {/* Disconnect & Home */}
-            <button
-              onClick={() => {
-                disconnect();
-                router.push('/');
-              }}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg mb-2 text-gray-300 hover:bg-white/10 hover:text-white transition-colors w-full text-left"
-            >
-              <span className="text-xl">🏠</span>
-              <span className="font-medium">Back to Home</span>
-            </button>
-          </nav>
-        </aside>
-
-        {/* Main Content */}
-        <main className="flex-1 p-8">
-          {children}
-        </main>
-      </div>
-    </div>
+    <DashboardShell
+      role="developer"
+      navItems={navItems}
+      switchRole={{ label: 'Client Dashboard', href: '/dashboard/client', icon: Icons.client }}
+    >
+      {children}
+    </DashboardShell>
   );
 }
