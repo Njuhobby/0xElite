@@ -111,9 +111,9 @@ export default function Home() {
               <a href="/apply" className="btn-primary text-lg">
                 Apply as Developer
               </a>
-              <button className="btn-secondary text-lg">
+              <a href="/dashboard/client" className="btn-secondary text-lg">
                 Post a Project
-              </button>
+              </a>
             </div>
 
             {/* Stats */}
