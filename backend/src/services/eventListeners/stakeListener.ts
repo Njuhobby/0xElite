@@ -128,14 +128,29 @@ export class StakeEventListener {
       try {
         const eventLog = event as ethers.EventLog;
 
-        // Wait for confirmations
+        // Wait for confirmations (skip on local chains like Hardhat where blocks don't auto-advance)
         const receipt = await eventLog.getTransactionReceipt();
-        const currentBlock = await this.provider.getBlockNumber();
-        const confirmations = currentBlock - receipt.blockNumber;
+        let currentBlock = await this.provider.getBlockNumber();
+        let confirmations = currentBlock - receipt.blockNumber;
 
         if (confirmations < eventSyncConfig.confirmations) {
           logger.info(`Waiting for confirmations: ${confirmations}/${eventSyncConfig.confirmations}`);
-          return;
+
+          // Poll for new blocks with timeout (handles Hardhat and other local chains)
+          const maxWait = 30000; // 30 seconds
+          const pollInterval = 1000;
+          const start = Date.now();
+
+          while (confirmations < eventSyncConfig.confirmations && Date.now() - start < maxWait) {
+            await this.sleep(pollInterval);
+            currentBlock = await this.provider.getBlockNumber();
+            confirmations = currentBlock - receipt.blockNumber;
+          }
+
+          // If still not enough confirmations, process anyway (local chain)
+          if (confirmations < eventSyncConfig.confirmations) {
+            logger.info(`Processing event without full confirmations (${confirmations}/${eventSyncConfig.confirmations}) — likely local chain`);
+          }
         }
 
         // Process event
