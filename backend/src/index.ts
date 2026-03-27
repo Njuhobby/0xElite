@@ -12,6 +12,7 @@ import escrowRouter, { initialize as initializeEscrow } from './api/routes/escro
 import reviewsRouter from './api/routes/reviews';
 import disputesRouter from './api/routes/disputes';
 import adminRouter from './api/routes/admin';
+import notificationsRouter from './api/routes/notifications';
 import { pool } from './config/database';
 import { startMilestoneListener } from './services/eventListeners/milestoneListener';
 import { startEventListeners as startStakeListener } from './services/eventListeners/stakeListener';
@@ -115,6 +116,7 @@ app.use('/api/escrow', escrowRouter);
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/disputes', disputesRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/notifications', notificationsRouter);
 
 // 404 handler
 app.use((req, res) => {

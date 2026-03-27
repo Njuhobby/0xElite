@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { ethers } from 'ethers';
 import { verifySignature } from '../../utils/signature';
 import { logger } from '../../utils/logger';
+import { createNotification } from '../../services/notificationService';
 
 const router = express.Router();
 
@@ -163,6 +164,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     // Fetch milestone with V2 flag
     const milestoneResult = await db.query(
       `SELECT m.*, p.client_address, p.assigned_developer, p.status as project_status,
+              p.title as project_title, p.total_budget,
               p.uses_onchain_milestones, p.contract_project_id, m.on_chain_index
        FROM milestones m
        JOIN projects p ON m.project_id = p.id
@@ -366,6 +368,25 @@ router.put('/:id', async (req: Request, res: Response) => {
       values
     );
 
+    // Send notifications based on status change
+    if (status === 'pending_review') {
+      await createNotification(
+        milestone.client_address,
+        'milestone_submitted',
+        'Milestone Submitted for Review',
+        `A milestone in your project "${milestone.project_title}" has been submitted and is ready for your review.`,
+        `/dashboard/client/projects/${milestone.project_id}`
+      );
+    } else if (status === 'completed' && milestone.assigned_developer) {
+      await createNotification(
+        milestone.assigned_developer,
+        'payment_received',
+        'Payment Received',
+        `Your milestone in "${milestone.project_title}" has been approved and payment has been released.`,
+        '/dashboard/developer/projects'
+      );
+    }
+
     // For V2 projects, relay status change to on-chain contract
     if (milestone.uses_onchain_milestones && milestone.on_chain_index !== null && status !== 'completed') {
       const milestoneStatusMap: Record<string, number> = {
@@ -463,6 +484,24 @@ router.put('/:id', async (req: Request, res: Response) => {
            WHERE wallet_address = $2`,
           [milestone.total_budget || 0, milestone.client_address]
         );
+
+        // Notify both parties of project completion
+        await createNotification(
+          milestone.client_address,
+          'project_completed',
+          'Project Completed',
+          `Your project "${milestone.project_title}" has been completed. All milestones are done.`,
+          `/dashboard/client/projects/${milestone.project_id}`
+        );
+        if (milestone.assigned_developer) {
+          await createNotification(
+            milestone.assigned_developer,
+            'project_completed',
+            'Project Completed',
+            `The project "${milestone.project_title}" has been completed. Great work!`,
+            '/dashboard/developer/projects'
+          );
+        }
       }
     }
 

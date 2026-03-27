@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../../config/database';
 import { verifySignature } from '../../utils/signature';
 import type { Developer } from '../../types/developer';
+import { createNotification } from '../../services/notificationService';
 
 const router = Router();
 
@@ -166,6 +167,14 @@ router.put('/developers/:address/approve', async (req, res) => {
 
     const updated = result.rows[0]!;
 
+    await createNotification(
+      walletAddress,
+      'developer_approved',
+      'Application Approved',
+      'Your developer application has been approved. You are now an active member of 0xElite.',
+      '/dashboard/developer'
+    );
+
     return res.json({
       message: 'Developer approved successfully',
       developer: {
@@ -249,6 +258,14 @@ router.put('/developers/:address/reject', async (req, res) => {
     );
 
     const updated = result.rows[0]!;
+
+    await createNotification(
+      walletAddress,
+      'developer_rejected',
+      'Application Rejected',
+      `Your developer application was not approved. Reason: ${reason.trim()}`,
+      '/dashboard/developer'
+    );
 
     return res.json({
       message: 'Developer rejected',

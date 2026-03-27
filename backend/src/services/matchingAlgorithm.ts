@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { ethers } from 'ethers';
 import { logger } from '../utils/logger';
+import { createNotification } from './notificationService';
 
 interface MatchingResult {
   developerId: string;
@@ -243,6 +244,14 @@ async function assignDeveloper(
       projectId: project.id,
       developerAddress,
     });
+
+    await createNotification(
+      developerAddress,
+      'project_assigned',
+      'New Project Assigned',
+      'You have been assigned to a new project. Check your projects page for details.',
+      '/dashboard/developer/projects'
+    );
   } catch (error) {
     // Rollback on error
     await client.query('ROLLBACK');

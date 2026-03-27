@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { pool } from '../../config/database';
 import { logger } from '../../utils/logger';
 import { eventSyncConfig } from '../../config/eventSync';
+import { createNotification } from '../notificationService';
 
 // StakeVault ABI - only the parts we need
 const STAKE_VAULT_ABI = [
@@ -237,6 +238,22 @@ export class StakeEventListener {
       await client.query('COMMIT');
 
       logger.info(`Developer ${developerAddress} staked ${stakeAmount} USDC, pending admin approval`);
+
+      // Notify all admins about new application
+      const adminAddresses = (process.env.ADMIN_ADDRESSES || '')
+        .split(',')
+        .map((a) => a.trim().toLowerCase())
+        .filter((a) => a.length > 0);
+
+      for (const admin of adminAddresses) {
+        await createNotification(
+          admin,
+          'new_application',
+          'New Developer Application',
+          `Developer ${developerAddress.slice(0, 6)}...${developerAddress.slice(-4)} has staked ${stakeAmount} USDC and is awaiting approval.`,
+          '/dashboard/admin'
+        );
+      }
     } catch (error) {
       await client.query('ROLLBACK');
       logger.error(`Database update failed for ${developerAddress}:`, error);
