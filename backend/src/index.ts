@@ -11,7 +11,7 @@ import clientsRouter, { initialize as initializeClients } from './api/routes/cli
 import escrowRouter, { initialize as initializeEscrow } from './api/routes/escrow';
 import reviewsRouter from './api/routes/reviews';
 import disputesRouter from './api/routes/disputes';
-import adminRouter from './api/routes/admin';
+import adminRouter, { initialize as initializeAdmin } from './api/routes/admin';
 import notificationsRouter from './api/routes/notifications';
 import { pool } from './config/database';
 import { startMilestoneListener } from './services/eventListeners/milestoneListener';
@@ -87,6 +87,7 @@ initializeProjects(db, projectManagerContract);
 initializeMilestones(db, projectManagerContract, escrowVaultContract);
 initializeClients(db);
 initializeEscrow(db, escrowVaultContract);
+initializeAdmin(projectManagerContract);
 
 // Middleware
 app.use(cors({

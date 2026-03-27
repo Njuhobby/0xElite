@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { verifySignature } from '../../utils/signature';
 import { logger } from '../../utils/logger';
 import { createNotification } from '../../services/notificationService';
+import { processPendingQueue } from '../../services/matchingAlgorithm';
 
 const router = express.Router();
 
@@ -483,6 +484,11 @@ router.put('/:id', async (req: Request, res: Response) => {
                updated_at = NOW()
            WHERE wallet_address = $2`,
           [milestone.total_budget || 0, milestone.client_address]
+        );
+
+        // Developer is now free — try to assign pending projects
+        processPendingQueue(db, projectManagerContract).catch((err) =>
+          logger.error('Error processing pending queue after project completion:', err)
         );
 
         // Notify both parties of project completion

@@ -1,10 +1,18 @@
 import { Router } from 'express';
+import { ethers } from 'ethers';
 import { pool } from '../../config/database';
 import { verifySignature } from '../../utils/signature';
 import type { Developer } from '../../types/developer';
 import { createNotification } from '../../services/notificationService';
+import { processPendingQueue } from '../../services/matchingAlgorithm';
 
 const router = Router();
+
+let projectManagerContract: ethers.Contract;
+
+export function initialize(contract: ethers.Contract) {
+  projectManagerContract = contract;
+}
 
 /**
  * Read admin addresses from env at call time (not module load) for testability
@@ -174,6 +182,13 @@ router.put('/developers/:address/approve', async (req, res) => {
       'Your developer application has been approved. You are now an active member of 0xElite.',
       '/dashboard/developer'
     );
+
+    // Try to assign pending draft projects to the newly approved developer
+    if (projectManagerContract) {
+      processPendingQueue(pool, projectManagerContract).catch((err) =>
+        console.error('Error processing pending queue after approval:', err)
+      );
+    }
 
     return res.json({
       message: 'Developer approved successfully',
