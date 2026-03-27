@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAccount, useDisconnect } from 'wagmi';
 import { useRouter } from 'next/navigation';
+import NotificationBell from './NotificationBell';
 
 interface NavItem {
   name: string;
@@ -176,22 +177,8 @@ export default function DashboardShell({ children, role, navItems, switchRole }:
       {/* Main content area */}
       <div className="flex-1 ml-64">
         {/* Top bar */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 sticky top-0 z-10">
-          <div />
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
-              <span className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="text-sm text-gray-700 font-medium">
-                {address?.slice(0, 6)}...{address?.slice(-4)}
-              </span>
-            </div>
-            <button
-              onClick={() => disconnect()}
-              className="text-sm text-gray-500 hover:text-gray-700 font-medium px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              Disconnect
-            </button>
-          </div>
+        <header className="h-16 bg-white border-b border-gray-200 px-8 sticky top-0 z-10 flex items-center justify-end">
+          {address && <NotificationBell address={address} />}
         </header>
 
         {/* Page content */}
