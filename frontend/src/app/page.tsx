@@ -33,7 +33,13 @@ export default function Home() {
         );
 
         if (devResponse.ok) {
-          router.push('/dashboard/developer');
+          const devData = await devResponse.json();
+          if (devData.status === 'created') {
+            // Profile saved but not staked — continue application
+            router.push('/apply');
+          } else {
+            router.push('/dashboard/developer');
+          }
           return;
         }
 

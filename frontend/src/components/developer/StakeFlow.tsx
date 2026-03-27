@@ -81,7 +81,7 @@ interface Props {
 }
 
 export default function StakeFlow({ address, formData, onBack, onSuccess }: Props) {
-  const [step, setStep] = useState<'approve' | 'stake' | 'submit'>('approve');
+  const [step, setStep] = useState<'approve' | 'stake'>('approve');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
 
@@ -129,18 +129,29 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
     hash: stakeHash,
   });
 
-  // Auto-advance to next step after successful transactions
+  // Sign message for backend
+  const { signMessageAsync } = useSignMessage();
+
+  // Auto-advance after approve
   useEffect(() => {
     if (isApproveSuccess && step === 'approve') {
       setStep('stake');
     }
   }, [isApproveSuccess, step]);
 
+  // If on stake step but allowance is gone (e.g. reorg), go back to approve
   useEffect(() => {
-    if (isStakeSuccess && step === 'stake') {
-      setStep('submit');
+    if (step === 'stake' && allowance != null && BigInt(allowance.toString()) < BigInt(stakeAmount)) {
+      setStep('approve');
     }
-  }, [isStakeSuccess, step]);
+  }, [step, allowance, stakeAmount]);
+
+  // Stake success → done
+  useEffect(() => {
+    if (isStakeSuccess) {
+      onSuccess();
+    }
+  }, [isStakeSuccess, onSuccess]);
 
   // Display errors
   useEffect(() => {
@@ -152,58 +163,9 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   useEffect(() => {
     if (stakeError) {
       setError(getShortErrorMessage(stakeError, 'Failed to stake USDC'));
-    }
-  }, [stakeError]);
-
-  // Sign message for backend
-  const { signMessageAsync } = useSignMessage();
-
-  const generateMessage = () => {
-    const timestamp = Date.now();
-    return `Welcome to 0xElite!
-
-Please sign this message to verify your wallet ownership.
-
-Wallet: ${address}
-Timestamp: ${timestamp}`;
-  };
-
-  const submitProfileWithMessage = async (signature: string, message: string) => {
-    setIsProcessing(true);
-    setError('');
-
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          address,
-          message,
-          signature,
-          email: formData.email,
-          githubUsername: formData.githubUsername || undefined,
-          skills: formData.skills,
-          bio: formData.bio || undefined,
-          hourlyRate: formData.hourlyRate ? Number(formData.hourlyRate) : undefined,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to create profile');
-      }
-
-      // Success!
-      onSuccess();
-    } catch (err) {
-      console.error('Profile submission error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to submit profile');
-    } finally {
       setIsProcessing(false);
     }
-  };
+  }, [stakeError]);
 
   const handleApprove = () => {
     setError('');
@@ -216,29 +178,59 @@ Timestamp: ${timestamp}`;
     });
   };
 
-  const handleStake = () => {
+  /**
+   * Stake flow: save profile to DB first, then send stake transaction.
+   * This ensures the developer record exists when the Staked event fires.
+   */
+  const handleStake = async () => {
     setError('');
-    stakeTokens({
-      address: STAKE_VAULT_ADDRESS,
-      abi: STAKE_VAULT_ABI,
-      functionName: 'stake',
-      args: [stakeAmount],
-      chainId: targetChain.id,
-    });
-  };
+    setIsProcessing(true);
 
-  const handleSubmit = async () => {
-    setError('');
     try {
-      const message = generateMessage();
-      const signature = await signMessageAsync({ message });
-      await submitProfileWithMessage(signature, message);
+      // Step 1: Save profile to database if not already saved
+      const checkRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`);
+      if (!checkRes.ok) {
+        // Developer doesn't exist yet — create profile
+        const message = `Welcome to 0xElite!\n\nPlease sign this message to verify your wallet ownership.\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
+        const signature = await signMessageAsync({ message });
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address,
+            message,
+            signature,
+            email: formData.email,
+            githubUsername: formData.githubUsername || undefined,
+            skills: formData.skills,
+            bio: formData.bio || undefined,
+            hourlyRate: formData.hourlyRate ? Number(formData.hourlyRate) : undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to save profile');
+        }
+      }
+
+      // Step 2: Send stake transaction
+      stakeTokens({
+        address: STAKE_VAULT_ADDRESS,
+        abi: STAKE_VAULT_ABI,
+        functionName: 'stake',
+        args: [stakeAmount],
+        chainId: targetChain.id,
+      });
     } catch (err) {
-      setError(getShortErrorMessage(err, 'Failed to sign message'));
+      setError(getShortErrorMessage(err, 'Failed to stake'));
+      setIsProcessing(false);
     }
   };
 
   const isAllowanceSufficient = allowance != null && BigInt(allowance.toString()) >= BigInt(stakeAmount);
+  const isStakeButtonDisabled = !isConfigured || isStakePending || isStaking || isProcessing;
 
   return (
     <div className="space-y-6">
@@ -306,48 +298,28 @@ Timestamp: ${timestamp}`;
           )}
         </div>
 
-        {/* Step 2: Stake */}
+        {/* Step 2: Stake (saves profile first, then stakes) */}
         <div className={`p-6 rounded-xl border ${step === 'stake' ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/10'}`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${step === 'submit' ? 'bg-green-600' : step === 'stake' ? 'bg-purple-600' : 'bg-white/20'} text-white font-bold`}>
-                {step === 'submit' ? '\u2713' : '2'}
-              </div>
-              <div>
-                <h3 className="text-white font-semibold">Stake USDC</h3>
-                <p className="text-gray-400 text-sm">Lock your stake in the contract</p>
-              </div>
+          <div className="flex items-center mb-4">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${step === 'stake' ? 'bg-purple-600' : 'bg-white/20'} text-white font-bold`}>
+              2
+            </div>
+            <div>
+              <h3 className="text-white font-semibold">Stake USDC</h3>
+              <p className="text-gray-400 text-sm">Sign to save your profile, then stake</p>
             </div>
           </div>
           {step === 'stake' && (
             <button
               onClick={handleStake}
-              disabled={!isConfigured || isStakePending || isStaking}
-              className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isStakePending || isStaking ? 'Staking...' : 'Stake USDC'}
-            </button>
-          )}
-        </div>
-
-        {/* Step 3: Submit Profile */}
-        <div className={`p-6 rounded-xl border ${step === 'submit' ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/10'}`}>
-          <div className="flex items-center mb-4">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${step === 'submit' ? 'bg-purple-600' : 'bg-white/20'} text-white font-bold`}>
-              3
-            </div>
-            <div>
-              <h3 className="text-white font-semibold">Submit Profile</h3>
-              <p className="text-gray-400 text-sm">Sign message to create your profile</p>
-            </div>
-          </div>
-          {step === 'submit' && (
-            <button
-              onClick={handleSubmit}
-              disabled={isProcessing}
+              disabled={isStakeButtonDisabled}
               className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg text-white font-semibold hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isProcessing ? 'Submitting...' : 'Sign & Submit Profile'}
+              {isProcessing && !isStakePending && !isStaking
+                ? 'Saving profile...'
+                : isStakePending || isStaking
+                  ? 'Staking...'
+                  : 'Sign & Stake'}
             </button>
           )}
         </div>

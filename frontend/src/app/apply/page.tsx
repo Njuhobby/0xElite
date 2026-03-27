@@ -9,11 +9,14 @@ import StakeFlow from '@/components/developer/StakeFlow';
 export default function ApplyPage() {
   const { address, isConnected } = useAccount();
   const router = useRouter();
-  const [step, setStep] = useState<'form' | 'stake'>('form');
+  const [step, setStep] = useState<'loading' | 'form' | 'stake'>('loading');
   const [formData, setFormData] = useState<any>(null);
 
   useEffect(() => {
-    if (!isConnected || !address) return;
+    if (!isConnected || !address) {
+      setStep('form');
+      return;
+    }
 
     const checkExisting = async () => {
       try {
@@ -21,10 +24,26 @@ export default function ApplyPage() {
           `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`
         );
         if (res.ok) {
-          router.push('/dashboard/developer');
+          const data = await res.json();
+          if (data.status === 'created') {
+            // Profile saved but not yet staked — resume at stake step
+            setFormData({
+              email: data.email,
+              githubUsername: data.githubUsername,
+              skills: data.skills,
+              bio: data.bio,
+              hourlyRate: data.hourlyRate?.toString(),
+            });
+            setStep('stake');
+          } else {
+            // Already staked/active/etc — go to dashboard
+            router.push('/dashboard/developer');
+          }
+        } else {
+          setStep('form');
         }
       } catch {
-        // Not registered — allow application
+        setStep('form');
       }
     };
 
@@ -43,6 +62,14 @@ export default function ApplyPage() {
             Wallet Not Connected
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (step === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0A0A1B] via-[#1a0a2e] to-[#0A0A1B] flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
       </div>
     );
   }

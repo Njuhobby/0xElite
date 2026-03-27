@@ -86,11 +86,11 @@ router.post('/', async (req, res) => {
         }
       }
 
-      // Insert new developer
+      // Insert new developer with 'created' status (not yet staked)
       const result = await client.query<Developer>(
         `INSERT INTO developers (
-          wallet_address, email, github_username, skills, bio, hourly_rate
-        ) VALUES ($1, $2, $3, $4, $5, $6)
+          wallet_address, email, github_username, skills, bio, hourly_rate, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'created')
         RETURNING *`,
         [
           walletAddress,

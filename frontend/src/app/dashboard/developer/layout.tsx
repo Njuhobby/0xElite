@@ -35,7 +35,11 @@ export default function DeveloperDashboardLayout({
 
         const data = await response.json();
 
-        if (data.status === 'active' || data.status === 'staked' || data.status === 'rejected') {
+        if (data.status === 'created') {
+          // Profile saved but not staked — redirect to apply page to continue
+          router.push('/apply');
+          return;
+        } else if (data.status === 'active' || data.status === 'staked' || data.status === 'rejected') {
           setDeveloperStatus(data.status);
         } else if (data.status === 'pending') {
           setDeveloperStatus('pending');
