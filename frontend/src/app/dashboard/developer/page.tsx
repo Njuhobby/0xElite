@@ -38,7 +38,8 @@ export default function DeveloperDashboardPage() {
     try {
       setLoading(true);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`,
+        { headers: { 'x-wallet-address': address } }
       );
 
       if (!response.ok) {
