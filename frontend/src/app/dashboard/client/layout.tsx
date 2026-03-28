@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import DashboardShell, { Icons } from '@/components/dashboard/DashboardShell';
+import { ClientContext } from './ClientContext';
 
 interface ClientData {
   walletAddress: string;
@@ -60,20 +61,26 @@ export default function ClientDashboardLayout({
     );
   }
 
-  const navItems = [
-    { name: 'Profile', href: '/dashboard/client', icon: Icons.profile },
-    { name: 'Projects', href: '/dashboard/client/projects', icon: Icons.projects },
-    { name: 'Disputes', href: '/disputes', icon: Icons.disputes },
-    { name: 'Settings', href: '/dashboard/client/settings', icon: Icons.settings },
-  ];
+  const navItems = clientStatus === 'registered'
+    ? [
+        { name: 'Profile', href: '/dashboard/client', icon: Icons.profile },
+        { name: 'Projects', href: '/dashboard/client/projects', icon: Icons.projects },
+        { name: 'Disputes', href: '/disputes', icon: Icons.disputes },
+        { name: 'Settings', href: '/dashboard/client/settings', icon: Icons.settings },
+      ]
+    : [
+        { name: 'Profile', href: '/dashboard/client', icon: Icons.profile },
+      ];
 
   return (
-    <DashboardShell
-      role="client"
-      navItems={navItems}
-      switchRole={{ label: 'Developer Dashboard', href: '/dashboard/developer', icon: Icons.developers }}
-    >
-      {children}
-    </DashboardShell>
+    <ClientContext.Provider value={{ clientStatus, setClientStatus }}>
+      <DashboardShell
+        role="client"
+        navItems={navItems}
+        switchRole={{ label: 'Developer Dashboard', href: '/dashboard/developer', icon: Icons.developers }}
+      >
+        {children}
+      </DashboardShell>
+    </ClientContext.Provider>
   );
 }

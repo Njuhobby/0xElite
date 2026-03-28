@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import EditClientProfileModal from '@/components/client/EditClientProfileModal';
 import ReviewList from '@/components/reviews/ReviewList';
+import { useClientStatus } from './ClientContext';
 
 interface ClientProfile {
   walletAddress: string;
@@ -22,6 +23,7 @@ interface ClientProfile {
 export default function ClientDashboardPage() {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  const { setClientStatus } = useClientStatus();
   const [client, setClient] = useState<ClientProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRegistered, setIsRegistered] = useState(false);
@@ -103,6 +105,7 @@ export default function ClientDashboardPage() {
       }
 
       await fetchClient();
+      setClientStatus('registered');
     } catch (err) {
       setRegError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
