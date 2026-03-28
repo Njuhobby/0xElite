@@ -14,7 +14,7 @@ export default function DeveloperDashboardLayout({
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const router = useRouter();
-  const [developerStatus, setDeveloperStatus] = useState<'loading' | 'active' | 'staked' | 'rejected' | 'pending' | 'unauthorized'>('loading');
+  const [developerStatus, setDeveloperStatus] = useState<'loading' | 'active' | 'staked' | 'rejected' | 'pending' | 'verifyingStaked' | 'unauthorized'>('loading');
 
   useEffect(() => {
     if (!isConnected || !address) {
@@ -36,9 +36,12 @@ export default function DeveloperDashboardLayout({
         const data = await response.json();
 
         if (data.status === 'created') {
-          // Profile saved but not staked — redirect to apply page to continue
-          router.push('/apply');
-          return;
+          if (Number(data.stakeAmount || 0) === 0) {
+            // Profile saved, stake tx may still be confirming on-chain
+            setDeveloperStatus('verifyingStaked');
+          } else {
+            setDeveloperStatus('pending');
+          }
         } else if (data.status === 'active' || data.status === 'staked' || data.status === 'rejected') {
           setDeveloperStatus(data.status);
         } else if (data.status === 'pending') {
@@ -93,6 +96,32 @@ export default function DeveloperDashboardLayout({
               router.push('/');
             }}
             className="block w-full py-3 mt-3 bg-gray-100 rounded-xl text-gray-700 font-semibold text-center hover:bg-gray-200 transition-colors"
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Verifying staked state
+  if (developerStatus === 'verifyingStaked') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 max-w-md text-center">
+          <div className="w-14 h-14 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-7 h-7 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Verifying Stake</h2>
+          <p className="text-gray-500 mb-6">
+            Your stake is being processed on-chain. This may take a few moments.
+          </p>
+          <button
+            onClick={() => {
+              disconnect();
+              router.push('/');
+            }}
+            className="block w-full py-3 bg-gray-100 rounded-xl text-gray-700 font-semibold text-center hover:bg-gray-200 transition-colors"
           >
             Back to Home
           </button>

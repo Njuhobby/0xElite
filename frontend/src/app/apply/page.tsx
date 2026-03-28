@@ -24,21 +24,8 @@ export default function ApplyPage() {
           `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`
         );
         if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'created') {
-            // Profile saved but not yet staked — resume at stake step
-            setFormData({
-              email: data.email,
-              githubUsername: data.githubUsername,
-              skills: data.skills,
-              bio: data.bio,
-              hourlyRate: data.hourlyRate?.toString(),
-            });
-            setStep('stake');
-          } else {
-            // Already staked/active/etc — go to dashboard
-            router.push('/dashboard/developer');
-          }
+          // Developer already exists — let dashboard handle all statuses
+          router.push('/dashboard/developer');
         } else {
           setStep('form');
         }
@@ -49,6 +36,14 @@ export default function ApplyPage() {
 
     checkExisting();
   }, [address, isConnected, router]);
+
+  if (step === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0A0A1B] via-[#1a0a2e] to-[#0A0A1B] flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
+  }
 
   if (!isConnected) {
     return (
@@ -62,14 +57,6 @@ export default function ApplyPage() {
             Wallet Not Connected
           </div>
         </div>
-      </div>
-    );
-  }
-
-  if (step === 'loading') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0A0A1B] via-[#1a0a2e] to-[#0A0A1B] flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
       </div>
     );
   }
