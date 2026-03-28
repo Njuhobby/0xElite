@@ -83,6 +83,7 @@ interface Props {
 export default function StakeFlow({ address, formData, onBack, onSuccess }: Props) {
   const [step, setStep] = useState<'approve' | 'stake'>('approve');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string>('');
 
   // Check if contract addresses are configured
@@ -98,7 +99,7 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   const stakeAmount = requiredStake || FALLBACK_STAKE_AMOUNT;
 
   // Check USDC allowance
-  const { data: allowance } = useReadContract({
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: USDC_ADDRESS,
     abi: USDC_ABI,
     functionName: 'allowance',
@@ -132,19 +133,42 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   // Sign message for backend
   const { signMessageAsync } = useSignMessage();
 
-  // Auto-advance after approve
+  // On mount: if allowance is already sufficient, skip to stake
   useEffect(() => {
-    if (isApproveSuccess && step === 'approve') {
+    if (step === 'approve' && allowance != null && BigInt(allowance.toString()) >= BigInt(stakeAmount)) {
       setStep('stake');
     }
-  }, [isApproveSuccess, step]);
+  }, [step, allowance, stakeAmount]);
+
+  // After approve tx confirmed, refetch allowance to verify
+  useEffect(() => {
+    if (isApproveSuccess && step === 'approve' && !isVerifying) {
+      setIsVerifying(true);
+      refetchAllowance().then(({ data }) => {
+        if (data != null && BigInt(data.toString()) >= BigInt(stakeAmount)) {
+          setStep('stake');
+        }
+        setIsVerifying(false);
+      });
+    }
+  }, [isApproveSuccess, step, refetchAllowance, stakeAmount, isVerifying]);
+
+  const handleRetryVerify = () => {
+    setIsVerifying(true);
+    refetchAllowance().then(({ data }) => {
+      if (data != null && BigInt(data.toString()) >= BigInt(stakeAmount)) {
+        setStep('stake');
+      }
+      setIsVerifying(false);
+    });
+  };
 
   // If on stake step but allowance is gone (e.g. reorg), go back to approve
   useEffect(() => {
-    if (step === 'stake' && allowance != null && BigInt(allowance.toString()) < BigInt(stakeAmount)) {
+    if (step === 'stake' && !isVerifying && allowance != null && BigInt(allowance.toString()) < BigInt(stakeAmount)) {
       setStep('approve');
     }
-  }, [step, allowance, stakeAmount]);
+  }, [step, allowance, stakeAmount, isVerifying]);
 
   // Stake success → done
   useEffect(() => {
@@ -288,13 +312,32 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
             )}
           </div>
           {step === 'approve' && !isAllowanceSufficient && (
-            <button
-              onClick={handleApprove}
-              disabled={!isConfigured || isApprovePending || isApproving}
-              className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isApprovePending || isApproving ? 'Approving...' : 'Approve USDC'}
-            </button>
+            isVerifying ? (
+              <button
+                disabled
+                className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Verifying...
+              </button>
+            ) : isApproveSuccess ? (
+              <div className="space-y-2">
+                <p className="text-yellow-400 text-sm">Insufficient allowance detected. Please retry.</p>
+                <button
+                  onClick={handleRetryVerify}
+                  className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleApprove}
+                disabled={!isConfigured || isApprovePending || isApproving}
+                className="w-full py-3 bg-purple-600 rounded-lg text-white font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isApprovePending || isApproving ? 'Approving...' : 'Approve USDC'}
+              </button>
+            )
           )}
         </div>
 
