@@ -3,6 +3,7 @@
 import { ConnectWallet } from "@/components/ConnectWallet";
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
 
 export default function Home() {
@@ -114,12 +115,12 @@ export default function Home() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a href="/apply" className="btn-primary text-lg">
+              <Link href="/apply" className="btn-primary text-lg">
                 Apply as Developer
-              </a>
-              <a href="/dashboard/client" className="btn-secondary text-lg">
+              </Link>
+              <Link href="/dashboard/client" className="btn-secondary text-lg">
                 Post a Project
-              </a>
+              </Link>
             </div>
 
             {/* Stats */}
