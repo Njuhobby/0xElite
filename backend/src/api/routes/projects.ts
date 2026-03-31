@@ -89,7 +89,7 @@ function validateCreateProject(data: any): ValidationError[] {
 }
 
 // =====================================================
-// POST /api/projects - Create Project
+// POST /api/projects - Create Project (DB only, no on-chain)
 // =====================================================
 
 router.post('/', async (req: Request, res: Response) => {
@@ -133,51 +133,34 @@ router.post('/', async (req: Request, res: Response) => {
       [clientAddress]
     );
 
-    // Create project on blockchain first
-    const budgetInBaseUnits = ethers.parseUnits(totalBudget.toString(), 6); // USDC has 6 decimals
-    const tx = await (projectManagerContract as any).createProject(budgetInBaseUnits);
-    const receipt = await tx.wait();
-
-    // Extract project ID from event
-    const event = receipt.logs.find((log: any) => {
-      try {
-        const parsed = projectManagerContract.interface.parseLog(log);
-        return parsed?.name === 'ProjectCreated';
-      } catch (e) {
-        return false;
-      }
-    });
-
-    const parsedEvent = projectManagerContract.interface.parseLog(event)!;
-    const contractProjectId = parsedEvent.args.projectId;
-
-    logger.info('Project created on-chain', {
-      contractProjectId: contractProjectId.toString(),
-      client: clientAddress,
-      txHash: receipt.hash,
-    });
-
-    // Create project in database
+    // Create project in database (no on-chain call)
     const projectResult = await db.query(
       `INSERT INTO projects (
         client_address, title, description, required_skills, total_budget,
-        status, contract_project_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, 'draft', $6, NOW(), NOW())
+        status, uses_onchain_milestones, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, 'draft', true, NOW(), NOW())
       RETURNING *`,
-      [clientAddress, title, description, JSON.stringify(requiredSkills), totalBudget, contractProjectId.toString()]
+      [clientAddress, title, description, JSON.stringify(requiredSkills), totalBudget]
     );
 
     const project = projectResult.rows[0];
 
-    // Create milestones
+    // Create milestones with details_hash and on_chain_index
     const createdMilestones = [];
     for (let i = 0; i < milestones.length; i++) {
       const milestone = milestones[i];
+      const detailsHash = ethers.keccak256(
+        ethers.solidityPacked(
+          ['string', 'string', 'string'],
+          [milestone.title, milestone.description, JSON.stringify(milestone.deliverables)]
+        )
+      );
+
       const milestoneResult = await db.query(
         `INSERT INTO milestones (
           project_id, milestone_number, title, description, deliverables, budget,
-          status, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW(), NOW())
+          status, details_hash, on_chain_index, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, NOW(), NOW())
         RETURNING *`,
         [
           project.id,
@@ -185,13 +168,19 @@ router.post('/', async (req: Request, res: Response) => {
           milestone.title,
           milestone.description,
           JSON.stringify(milestone.deliverables),
-          milestone.budget
+          milestone.budget,
+          detailsHash,
+          i
         ]
       );
       createdMilestones.push(milestoneResult.rows[0]);
     }
 
-    // Project stays in 'draft' until escrow is deposited
+    logger.info('Project draft created', {
+      projectId: project.id,
+      client: clientAddress,
+    });
+
     res.status(201).json({
       id: project.id,
       projectNumber: project.project_number,
@@ -201,8 +190,8 @@ router.post('/', async (req: Request, res: Response) => {
       requiredSkills: project.required_skills,
       totalBudget: project.total_budget,
       status: 'draft',
+      usesOnchainMilestones: true,
       assignedDeveloper: null,
-      assignmentPending: true,
       milestones: createdMilestones.map((m: any) => ({
         id: m.id,
         milestoneNumber: m.milestone_number,
@@ -211,9 +200,10 @@ router.post('/', async (req: Request, res: Response) => {
         deliverables: m.deliverables,
         budget: m.budget,
         status: m.status,
+        detailsHash: m.details_hash,
+        onChainIndex: m.on_chain_index,
       })),
       createdAt: project.created_at,
-      message: 'Project created successfully. Deposit escrow to activate and find a developer.',
     });
   } catch (error: any) {
     logger.error('Error creating project', { error });
@@ -538,175 +528,75 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // =====================================================
-// POST /api/projects/register - Register V2 Project (after client creates on-chain)
+// PATCH /api/projects/:id/contract - Update project with on-chain contract ID
+// Called by frontend after createProjectWithMilestones tx confirms
 // =====================================================
 
-router.post('/register', async (req: Request, res: Response) => {
+router.patch('/:id/contract', async (req: Request, res: Response) => {
   try {
-    const {
-      address, message, signature,
-      txHash, title, description, requiredSkills, totalBudget, milestones
-    } = req.body;
+    const { id } = req.params;
+    const { address, contractProjectId } = req.body;
 
-    // Validation
-    if (!address || !message || !signature || !txHash) {
+    if (!address || !contractProjectId) {
       return res.status(400).json({
         error: 'VALIDATION_ERROR',
-        message: 'Address, message, signature, and txHash required',
-      });
-    }
-
-    if (!title || !description || !Array.isArray(milestones) || milestones.length === 0) {
-      return res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Title, description, and milestones required',
-      });
-    }
-
-    // Verify signature
-    const isValidSignature = verifySignature(message, signature, address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
+        message: 'address and contractProjectId required',
       });
     }
 
     const clientAddress = address.toLowerCase();
 
-    // Extract contractProjectId from tx receipt
-    const provider = projectManagerContract.runner?.provider;
-    if (!provider) {
-      return res.status(500).json({
-        error: 'INTERNAL_ERROR',
-        message: 'Provider not available',
-      });
-    }
-
-    const receipt = await provider.getTransactionReceipt(txHash);
-    if (!receipt) {
-      return res.status(400).json({
-        error: 'INVALID_TX',
-        message: 'Transaction receipt not found. Transaction may not be confirmed yet.',
-      });
-    }
-
-    const event = receipt.logs.find((log: any) => {
-      try {
-        const parsed = projectManagerContract.interface.parseLog(log);
-        return parsed?.name === 'ProjectCreated';
-      } catch (e) {
-        return false;
-      }
-    });
-
-    if (!event) {
-      return res.status(400).json({
-        error: 'INVALID_TX',
-        message: 'ProjectCreated event not found in transaction',
-      });
-    }
-
-    const parsedEvent = projectManagerContract.interface.parseLog(event)!;
-    const contractProjectId = parsedEvent.args.projectId.toString();
-
-    logger.info('Registering V2 project', {
-      contractProjectId,
-      client: clientAddress,
-      txHash,
-    });
-
-    // Ensure client record exists
-    await db.query(
-      `INSERT INTO clients (wallet_address)
-       VALUES ($1)
-       ON CONFLICT (wallet_address) DO NOTHING`,
-      [clientAddress]
-    );
-
-    await db.query(
-      `UPDATE clients
-       SET projects_created = projects_created + 1,
-           updated_at = NOW()
-       WHERE wallet_address = $1`,
-      [clientAddress]
-    );
-
-    // Create project in database with uses_onchain_milestones = true
+    // Fetch project and verify ownership
     const projectResult = await db.query(
-      `INSERT INTO projects (
-        client_address, title, description, required_skills, total_budget,
-        status, contract_project_id, uses_onchain_milestones, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, 'draft', $6, true, NOW(), NOW())
-      RETURNING *`,
-      [clientAddress, title, description, JSON.stringify(requiredSkills), totalBudget, contractProjectId]
+      'SELECT id, client_address, status FROM projects WHERE id = $1',
+      [id]
     );
+
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'NOT_FOUND',
+        message: 'Project not found',
+      });
+    }
 
     const project = projectResult.rows[0];
 
-    // Create milestones with details_hash and on_chain_index
-    const createdMilestones = [];
-    for (let i = 0; i < milestones.length; i++) {
-      const milestone = milestones[i];
-      // Compute detailsHash matching on-chain: keccak256(abi.encodePacked(title, description, deliverables))
-      const detailsHash = ethers.keccak256(
-        ethers.solidityPacked(
-          ['string', 'string', 'string'],
-          [milestone.title, milestone.description, JSON.stringify(milestone.deliverables)]
-        )
-      );
-
-      const milestoneResult = await db.query(
-        `INSERT INTO milestones (
-          project_id, milestone_number, title, description, deliverables, budget,
-          status, details_hash, on_chain_index, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, NOW(), NOW())
-        RETURNING *`,
-        [
-          project.id,
-          i + 1,
-          milestone.title,
-          milestone.description,
-          JSON.stringify(milestone.deliverables),
-          milestone.budget,
-          detailsHash,
-          i
-        ]
-      );
-      createdMilestones.push(milestoneResult.rows[0]);
+    if (project.client_address !== clientAddress) {
+      return res.status(403).json({
+        error: 'FORBIDDEN',
+        message: 'Only project owner can update contract ID',
+      });
     }
 
-    // Project stays in 'draft' until escrow is deposited
-    res.status(201).json({
-      id: project.id,
-      projectNumber: project.project_number,
-      clientAddress: project.client_address,
-      contractProjectId,
-      title: project.title,
-      description: project.description,
-      requiredSkills: project.required_skills,
-      totalBudget: project.total_budget,
-      status: 'draft',
-      usesOnchainMilestones: true,
-      assignedDeveloper: null,
-      milestones: createdMilestones.map((m: any) => ({
-        id: m.id,
-        milestoneNumber: m.milestone_number,
-        title: m.title,
-        description: m.description,
-        deliverables: m.deliverables,
-        budget: m.budget,
-        status: m.status,
-        detailsHash: m.details_hash,
-        onChainIndex: m.on_chain_index,
-      })),
-      createdAt: project.created_at,
+    if (project.status !== 'draft') {
+      return res.status(409).json({
+        error: 'CONFLICT',
+        message: `Project is in '${project.status}' status, expected 'draft'`,
+      });
+    }
+
+    await db.query(
+      `UPDATE projects
+       SET contract_project_id = $1, status = 'created_on_chain', updated_at = NOW()
+       WHERE id = $2`,
+      [contractProjectId.toString(), id]
+    );
+
+    logger.info('Project contract ID updated', {
+      projectId: id,
+      contractProjectId: contractProjectId.toString(),
+    });
+
+    res.json({
+      id,
+      contractProjectId: contractProjectId.toString(),
+      status: 'created_on_chain',
     });
   } catch (error: any) {
-    logger.error('Error registering V2 project', { error });
+    logger.error('Error updating project contract ID', { error });
     res.status(500).json({
       error: 'INTERNAL_ERROR',
-      message: 'Failed to register project',
+      message: 'Failed to update project contract ID',
     });
   }
 });

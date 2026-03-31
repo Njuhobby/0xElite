@@ -376,6 +376,7 @@ export default function ProjectDetailPage() {
                 <MilestoneCard
                   key={milestone.id}
                   milestone={milestone}
+                  projectId={project.id}
                   isClient={isClient}
                   isDeveloper={isDeveloper}
                   onUpdate={fetchProject}
