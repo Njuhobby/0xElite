@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useWriteContract, useReadContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
 import { Address } from 'viem';
 import { targetChain } from '@/config/wagmi';
+import { TX_CONFIRMATIONS } from '@/config/contracts';
 
 // Extract a user-friendly error message from wallet/viem errors
 function getShortErrorMessage(error: unknown, fallback: string): string {
@@ -58,9 +59,35 @@ const STAKE_VAULT_ABI = [
   },
 ] as const;
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 // Contract addresses from environment
 const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d') as Address;
 const STAKE_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_STAKE_VAULT_ADDRESS || '0x...') as Address;
+
+/** Best-effort write to pending_transactions */
+async function writePendingTx(params: {
+  entityType: string;
+  entityId: string;
+  action: string;
+  txHash: string;
+  walletAddress: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    await fetch(`${API_URL}/api/transactions/pending`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+  } catch { /* best effort */ }
+}
+
+async function deletePendingTx(txHash: string) {
+  try {
+    await fetch(`${API_URL}/api/transactions/pending/${txHash}`, { method: 'DELETE' });
+  } catch { /* best effort */ }
+}
 
 // Fallback stake amount (raw USDC base units, e.g. 200000000 = 200 USDC)
 const FALLBACK_STAKE_AMOUNT = BigInt('200000000');
@@ -85,6 +112,7 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string>('');
+  const [developerId, setDeveloperId] = useState<string | null>(null);
 
   // Check if contract addresses are configured
   const isConfigured = STAKE_VAULT_ADDRESS !== '0x...' && !STAKE_VAULT_ADDRESS.includes('...');
@@ -116,6 +144,7 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
 
   const { isLoading: isApproving, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
     hash: approveHash,
+    confirmations: TX_CONFIRMATIONS,
   });
 
   // Stake
@@ -128,6 +157,7 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
 
   const { isLoading: isStaking, isSuccess: isStakeSuccess } = useWaitForTransactionReceipt({
     hash: stakeHash,
+    confirmations: TX_CONFIRMATIONS,
   });
 
   // Sign message for backend
@@ -170,9 +200,45 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
     }
   }, [step, allowance, stakeAmount, isVerifying]);
 
-  // Stake success → done
+  // Write pending tx when we get approveHash
+  useEffect(() => {
+    if (approveHash && developerId) {
+      writePendingTx({
+        entityType: 'developer',
+        entityId: developerId,
+        action: 'approve_usdc',
+        txHash: approveHash,
+        walletAddress: address,
+        metadata: { amount: Number(stakeAmount) / 1e6 },
+      });
+    }
+  }, [approveHash]);
+
+  // Clean up approve pending tx on success
+  useEffect(() => {
+    if (isApproveSuccess && approveHash) {
+      deletePendingTx(approveHash);
+    }
+  }, [isApproveSuccess]);
+
+  // Write pending tx when we get stakeHash
+  useEffect(() => {
+    if (stakeHash && developerId) {
+      writePendingTx({
+        entityType: 'developer',
+        entityId: developerId,
+        action: 'stake',
+        txHash: stakeHash,
+        walletAddress: address,
+        metadata: { amount: Number(stakeAmount) / 1e6 },
+      });
+    }
+  }, [stakeHash]);
+
+  // Stake success → clean up pending tx and done
   useEffect(() => {
     if (isStakeSuccess) {
+      if (stakeHash) deletePendingTx(stakeHash);
       onSuccess();
     }
   }, [isStakeSuccess, onSuccess]);
@@ -212,13 +278,16 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
 
     try {
       // Step 1: Save profile to database if not already saved
-      const checkRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${address}`);
-      if (!checkRes.ok) {
+      const checkRes = await fetch(`${API_URL}/api/developers/${address}`);
+      if (checkRes.ok) {
+        const devData = await checkRes.json();
+        setDeveloperId(devData.id);
+      } else {
         // Developer doesn't exist yet — create profile
         const message = `Welcome to 0xElite!\n\nPlease sign this message to verify your wallet ownership.\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
         const signature = await signMessageAsync({ message });
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers`, {
+        const response = await fetch(`${API_URL}/api/developers`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -237,6 +306,9 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
           const errorData = await response.json();
           throw new Error(errorData.message || 'Failed to save profile');
         }
+
+        const newDev = await response.json();
+        setDeveloperId(newDev.id);
       }
 
       // Step 2: Send stake transaction

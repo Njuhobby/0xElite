@@ -1,4 +1,9 @@
 /**
+ * Number of block confirmations to wait before considering a tx confirmed.
+ */
+export const TX_CONFIRMATIONS = Number(process.env.NEXT_PUBLIC_CONFIRMATIONS ?? 1);
+
+/**
  * ProjectManager ABI — functions used by the frontend
  */
 export const PROJECT_MANAGER_ABI = [

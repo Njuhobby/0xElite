@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useRouter } from 'next/navigation';
-import { parseUnits, keccak256, encodePacked, Address } from 'viem';
+import { parseUnits, keccak256, encodePacked, Address, decodeEventLog } from 'viem';
 import MilestoneManager from '@/components/project/MilestoneManager';
-import { PROJECT_MANAGER_ABI, getProjectManagerAddress, getEscrowVaultAddress } from '@/config/contracts';
+import { PROJECT_MANAGER_ABI, getProjectManagerAddress, getEscrowVaultAddress, TX_CONFIRMATIONS } from '@/config/contracts';
 
 interface Milestone {
   title: string;
@@ -13,6 +13,8 @@ interface Milestone {
   deliverables: string[];
   budget: number;
 }
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const AVAILABLE_SKILLS = [
   'Solidity', 'Rust', 'JavaScript', 'TypeScript', 'React', 'Next.js', 'Node.js',
@@ -53,10 +55,6 @@ const ESCROW_VAULT_ABI = [
   },
 ] as const;
 
-/**
- * Compute the detailsHash for a milestone, matching the on-chain encoding:
- * keccak256(abi.encodePacked(title, description, deliverablesJson))
- */
 function computeMilestoneHash(milestone: Milestone): `0x${string}` {
   const deliverablesJson = JSON.stringify(milestone.deliverables.filter(d => d.trim()));
   return keccak256(encodePacked(
@@ -65,7 +63,31 @@ function computeMilestoneHash(milestone: Milestone): `0x${string}` {
   ));
 }
 
-type DepositStep = 'form' | 'creating_onchain' | 'registering' | 'approving' | 'depositing' | 'recording' | 'completed';
+/** Best-effort write to pending_transactions */
+async function writePendingTx(params: {
+  entityType: string;
+  entityId: string;
+  action: string;
+  txHash: string;
+  walletAddress: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    await fetch(`${API_URL}/api/transactions/pending`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+  } catch { /* best effort */ }
+}
+
+async function deletePendingTx(txHash: string) {
+  try {
+    await fetch(`${API_URL}/api/transactions/pending/${txHash}`, { method: 'DELETE' });
+  } catch { /* best effort */ }
+}
+
+type DepositStep = 'form' | 'saving_draft' | 'creating_onchain' | 'updating_contract' | 'approving' | 'depositing' | 'recording' | 'completed';
 
 export default function CreateProjectPage() {
   const { address, isConnected } = useAccount();
@@ -79,12 +101,7 @@ export default function CreateProjectPage() {
   });
 
   const [milestones, setMilestones] = useState<Milestone[]>([
-    {
-      title: '',
-      description: '',
-      deliverables: [''],
-      budget: 0,
-    }
+    { title: '', description: '', deliverables: [''], budget: 0 },
   ]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -93,9 +110,12 @@ export default function CreateProjectPage() {
   const [depositStep, setDepositStep] = useState<DepositStep>('form');
   const [createdProject, setCreatedProject] = useState<{ id: string; contractProjectId: string } | null>(null);
 
+  // Guard to prevent duplicate calls during re-renders
+  const transitioningRef = useRef(false);
+  const prevStepRef = useRef<DepositStep>('form');
+
   const { signMessage } = useSignMessage();
 
-  // V2: On-chain project creation transaction
   const {
     data: createHash,
     writeContract: createProjectOnChain,
@@ -103,8 +123,9 @@ export default function CreateProjectPage() {
     error: createError,
   } = useWriteContract();
 
-  const { isLoading: isCreateTxPending, isSuccess: isCreateSuccess } = useWaitForTransactionReceipt({
+  const { isLoading: isCreateTxPending, isSuccess: isCreateSuccess, data: createReceipt } = useWaitForTransactionReceipt({
     hash: createHash,
+    confirmations: TX_CONFIRMATIONS,
   });
 
   // USDC approval transaction
@@ -117,6 +138,7 @@ export default function CreateProjectPage() {
 
   const { isLoading: isApproveTxPending } = useWaitForTransactionReceipt({
     hash: approveHash,
+    confirmations: TX_CONFIRMATIONS,
   });
 
   // Escrow deposit transaction
@@ -129,6 +151,7 @@ export default function CreateProjectPage() {
 
   const { isLoading: isDepositTxPending, isSuccess: isDepositSuccess } = useWaitForTransactionReceipt({
     hash: depositHash,
+    confirmations: TX_CONFIRMATIONS,
   });
 
   const toggleSkill = (skill: string) => {
@@ -176,95 +199,57 @@ export default function CreateProjectPage() {
     return errors.length === 0;
   };
 
-  const generateMessage = (action: string) => {
-    const timestamp = Date.now();
-    return `${action} on 0xElite
-
-Wallet: ${address}
-Timestamp: ${timestamp}`;
-  };
-
-  /**
-   * V2: Register the on-chain project with the backend after tx confirms.
-   * Backend extracts contractProjectId from tx receipt and stores project + milestones.
-   */
-  const registerProjectInBackend = async (txHash: string) => {
+  /** After on-chain creation confirms, extract contractProjectId and update backend */
+  const updateContractId = async (projectId: string, receipt: any) => {
     try {
-      setDepositStep('registering');
+      setDepositStep('updating_contract');
       setError('');
 
-      const message = generateMessage('Register project');
+      let contractProjectId: string | null = null;
+      for (const log of receipt.logs) {
+        try {
+          const decoded = decodeEventLog({
+            abi: PROJECT_MANAGER_ABI,
+            data: log.data,
+            topics: log.topics,
+          });
+          if (decoded.eventName === 'ProjectCreated') {
+            contractProjectId = (decoded.args as any).projectId.toString();
+            break;
+          }
+        } catch { /* not our event */ }
+      }
 
-      // Sign to authenticate with backend
-      signMessage(
-        { message },
-        {
-          onSuccess: async (signature) => {
-            try {
-              const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/projects/register`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    address,
-                    message,
-                    signature,
-                    txHash,
-                    title: formData.title,
-                    description: formData.description,
-                    requiredSkills: formData.requiredSkills,
-                    totalBudget: parseFloat(formData.totalBudget),
-                    milestones: milestones.map(m => ({
-                      title: m.title,
-                      description: m.description,
-                      deliverables: m.deliverables.filter(d => d.trim()),
-                      budget: m.budget,
-                    })),
-                  }),
-                }
-              );
+      if (!contractProjectId) {
+        setError('Could not extract project ID from transaction');
+        return;
+      }
 
-              if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to register project');
-              }
+      const response = await fetch(`${API_URL}/api/projects/${projectId}/contract`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, contractProjectId }),
+      });
 
-              const data = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update contract ID');
+      }
 
-              setCreatedProject({
-                id: data.id,
-                contractProjectId: data.contractProjectId,
-              });
-              setDepositStep('approving');
-              setIsSubmitting(false);
-            } catch (err) {
-              setError(err instanceof Error ? err.message : 'An error occurred');
-              setDepositStep('creating_onchain');
-              setIsSubmitting(false);
-            }
-          },
-          onError: (error) => {
-            setError(error.message);
-            setDepositStep('creating_onchain');
-            setIsSubmitting(false);
-          },
-        }
-      );
+      if (createHash) await deletePendingTx(createHash);
+
+      setCreatedProject({ id: projectId, contractProjectId });
+      setDepositStep('approving');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      setDepositStep('creating_onchain');
-      setIsSubmitting(false);
     }
   };
 
   const handleApproveUsdc = async () => {
     if (!createdProject) return;
-
     try {
       setError('');
-      const amountUsdc = parseUnits(formData.totalBudget, 6); // USDC has 6 decimals
-
+      const amountUsdc = parseUnits(formData.totalBudget, 6);
       approveUsdc({
         address: USDC_ADDRESS,
         abi: USDC_ABI,
@@ -273,18 +258,15 @@ Timestamp: ${timestamp}`;
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      setDepositStep('form');
     }
   };
 
   const handleDepositEscrow = async () => {
     if (!createdProject) return;
-
     try {
       setError('');
       setDepositStep('depositing');
       const amountUsdc = parseUnits(formData.totalBudget, 6);
-
       depositEscrow({
         address: ESCROW_VAULT_ADDRESS,
         abi: ESCROW_VAULT_ABI,
@@ -299,24 +281,19 @@ Timestamp: ${timestamp}`;
 
   const recordDepositInBackend = async (txHash: string) => {
     if (!createdProject) return;
-
     try {
       setError('');
       setDepositStep('recording');
-
       const message = `Record escrow deposit for project ${createdProject.id}\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
 
       signMessage(
         { message },
         {
           onSuccess: async (signature) => {
-            const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/escrow/deposit`,
-              {
+            try {
+              const response = await fetch(`${API_URL}/api/escrow/deposit`, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   address,
                   message,
@@ -325,20 +302,22 @@ Timestamp: ${timestamp}`;
                   amount: parseFloat(formData.totalBudget),
                   txHash,
                 }),
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to record deposit');
               }
-            );
 
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.message || 'Failed to record deposit');
+              await deletePendingTx(txHash);
+              setDepositStep('completed');
+              setTimeout(() => {
+                router.push(`/projects/${createdProject.id}`);
+              }, 2000);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Failed to record deposit');
+              setDepositStep('depositing');
             }
-
-            setDepositStep('completed');
-
-            // Redirect after a short delay
-            setTimeout(() => {
-              router.push(`/projects/${createdProject.id}`);
-            }, 2000);
           },
           onError: (error) => {
             setError(error.message);
@@ -352,44 +331,156 @@ Timestamp: ${timestamp}`;
     }
   };
 
+  // Reset guard when step actually changes
+  useEffect(() => {
+    if (depositStep !== prevStepRef.current) {
+      prevStepRef.current = depositStep;
+      transitioningRef.current = false;
+    }
+  }, [depositStep]);
+
   // Effect to handle on-chain project creation confirmation
-  if (createHash && isCreateSuccess && depositStep === 'creating_onchain') {
-    registerProjectInBackend(createHash);
-  }
+  useEffect(() => {
+    if (createHash && isCreateSuccess && createReceipt && depositStep === 'creating_onchain' && !transitioningRef.current && createdProject) {
+      transitioningRef.current = true;
+      updateContractId(createdProject.id, createReceipt);
+    }
+  }, [createHash, isCreateSuccess, createReceipt, depositStep, createdProject]);
+
+  // Write pending tx when we get createHash
+  useEffect(() => {
+    if (createHash && createdProject && address) {
+      writePendingTx({
+        entityType: 'project',
+        entityId: createdProject.id,
+        action: 'create_project',
+        txHash: createHash,
+        walletAddress: address,
+      });
+    }
+  }, [createHash]);
+
+  // Write pending tx when we get approveHash
+  useEffect(() => {
+    if (approveHash && createdProject && address) {
+      writePendingTx({
+        entityType: 'project',
+        entityId: createdProject.id,
+        action: 'approve_usdc',
+        txHash: approveHash,
+        walletAddress: address,
+        metadata: { amount: parseFloat(formData.totalBudget) },
+      });
+    }
+  }, [approveHash]);
 
   // Effect to handle approval confirmation
-  if (approveHash && !isApproveTxPending && depositStep === 'approving') {
-    handleDepositEscrow();
-  }
+  useEffect(() => {
+    if (approveHash && !isApproveTxPending && depositStep === 'approving' && !transitioningRef.current) {
+      transitioningRef.current = true;
+      if (approveHash) deletePendingTx(approveHash);
+      handleDepositEscrow();
+    }
+  }, [approveHash, isApproveTxPending, depositStep]);
+
+  // Write pending tx when we get depositHash
+  useEffect(() => {
+    if (depositHash && createdProject && address) {
+      writePendingTx({
+        entityType: 'project',
+        entityId: createdProject.id,
+        action: 'deposit_escrow',
+        txHash: depositHash,
+        walletAddress: address,
+        metadata: { amount: parseFloat(formData.totalBudget) },
+      });
+    }
+  }, [depositHash]);
 
   // Effect to handle deposit confirmation
-  if (depositHash && isDepositSuccess && depositStep === 'depositing') {
-    recordDepositInBackend(depositHash);
-  }
+  useEffect(() => {
+    if (depositHash && isDepositSuccess && depositStep === 'depositing' && !transitioningRef.current) {
+      transitioningRef.current = true;
+      recordDepositInBackend(depositHash);
+    }
+  }, [depositHash, isDepositSuccess, depositStep]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setValidationErrors([]);
 
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
+    if (!address) return;
 
     setIsSubmitting(true);
-    setDepositStep('creating_onchain');
+    setDepositStep('saving_draft');
 
-    // V2: Client wallet calls createProjectWithMilestones directly on-chain
-    const totalBudgetUsdc = parseUnits(formData.totalBudget, 6);
-    const milestoneBudgets = milestones.map(m => parseUnits(m.budget.toFixed(6), 6));
-    const milestoneHashes = milestones.map(m => computeMilestoneHash(m));
+    try {
+      const message = `Create project on 0xElite\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
 
-    createProjectOnChain({
-      address: PROJECT_MANAGER_ADDRESS,
-      abi: PROJECT_MANAGER_ABI,
-      functionName: 'createProjectWithMilestones',
-      args: [totalBudgetUsdc, milestoneBudgets, milestoneHashes],
-    });
+      signMessage(
+        { message },
+        {
+          onSuccess: async (signature) => {
+            try {
+              const response = await fetch(`${API_URL}/api/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  address,
+                  message,
+                  signature,
+                  title: formData.title,
+                  description: formData.description,
+                  requiredSkills: formData.requiredSkills,
+                  totalBudget: parseFloat(formData.totalBudget),
+                  milestones: milestones.map(m => ({
+                    title: m.title,
+                    description: m.description,
+                    deliverables: m.deliverables.filter(d => d.trim()),
+                    budget: m.budget,
+                  })),
+                }),
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to create project');
+              }
+
+              const data = await response.json();
+              setCreatedProject({ id: data.id, contractProjectId: '' });
+
+              setDepositStep('creating_onchain');
+              const totalBudgetUsdc = parseUnits(formData.totalBudget, 6);
+              const milestoneBudgets = milestones.map(m => parseUnits(m.budget.toFixed(6), 6));
+              const milestoneHashes = milestones.map(m => computeMilestoneHash(m));
+
+              createProjectOnChain({
+                address: PROJECT_MANAGER_ADDRESS,
+                abi: PROJECT_MANAGER_ABI,
+                functionName: 'createProjectWithMilestones',
+                args: [totalBudgetUsdc, milestoneBudgets, milestoneHashes],
+              });
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'An error occurred');
+              setDepositStep('form');
+              setIsSubmitting(false);
+            }
+          },
+          onError: (err) => {
+            setError(err.message);
+            setDepositStep('form');
+            setIsSubmitting(false);
+          },
+        }
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setDepositStep('form');
+      setIsSubmitting(false);
+    }
   };
 
   if (!isConnected) {
@@ -405,7 +496,7 @@ Timestamp: ${timestamp}`;
 
   // Show progress flow after form submission
   if (depositStep !== 'form') {
-    const isAfterRegistration = depositStep === 'approving' || depositStep === 'depositing' || depositStep === 'recording' || depositStep === 'completed';
+    const isAfterContract = depositStep === 'approving' || depositStep === 'depositing' || depositStep === 'recording' || depositStep === 'completed';
     const isAfterDeposit = depositStep === 'recording' || depositStep === 'completed';
 
     return (
@@ -413,110 +504,41 @@ Timestamp: ${timestamp}`;
         <div className="max-w-2xl mx-auto">
           <div className="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-8">
             <h1 className="text-3xl font-bold text-white mb-6 text-center">
-              {isAfterRegistration ? 'Deposit Escrow' : 'Creating Project On-Chain'}
+              {isAfterContract ? 'Deposit Escrow' : 'Creating Project'}
             </h1>
             <p className="text-gray-400 text-center mb-8">
-              {isAfterRegistration
+              {isAfterContract
                 ? `Deposit ${formData.totalBudget} USDC to escrow to activate your project`
-                : 'Your project and milestones are being recorded on the blockchain'}
+                : 'Your project is being created and recorded on the blockchain'}
             </p>
 
             {/* Progress Steps */}
             <div className="space-y-4 mb-8">
-              {/* Step 1: Create On-Chain */}
-              <div className={`flex items-center p-4 rounded-xl ${
-                depositStep === 'creating_onchain' ? 'bg-purple-600/20 border border-purple-500' :
-                depositStep === 'registering' || isAfterRegistration ?
-                'bg-green-600/20 border border-green-500' :
-                'bg-white/5 border border-white/10'
-              }`}>
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
-                  {depositStep === 'registering' || isAfterRegistration ? '✓' : '1'}
+              {[
+                { key: 'saving_draft', label: 'Save Project', desc: 'Create project record in the platform', done: depositStep !== 'saving_draft', active: depositStep === 'saving_draft', spinning: depositStep === 'saving_draft' },
+                { key: 'creating_onchain', label: 'Create On-Chain', desc: 'Sign transaction to create project with milestones on-chain', done: depositStep === 'updating_contract' || isAfterContract, active: depositStep === 'creating_onchain', spinning: depositStep === 'creating_onchain' && (isCreatingOnChain || isCreateTxPending) },
+                { key: 'updating_contract', label: 'Link Contract', desc: 'Link on-chain contract to project', done: isAfterContract, active: depositStep === 'updating_contract', spinning: depositStep === 'updating_contract' },
+                { key: 'approving', label: 'Approve USDC', desc: 'Allow EscrowVault to spend your USDC', done: depositStep === 'depositing' || isAfterDeposit, active: depositStep === 'approving', spinning: depositStep === 'approving' && (isApproving || isApproveTxPending) },
+                { key: 'depositing', label: 'Deposit to Escrow', desc: 'Transfer USDC to escrow vault', done: isAfterDeposit, active: depositStep === 'depositing', spinning: depositStep === 'depositing' && (isDepositing || isDepositTxPending) },
+                { key: 'recording', label: 'Activate Project', desc: 'Record deposit and activate project', done: depositStep === 'completed', active: depositStep === 'recording', spinning: depositStep === 'recording' },
+              ].map((step, i) => (
+                <div key={step.key} className={`flex items-center p-4 rounded-xl ${
+                  step.done ? 'bg-green-600/20 border border-green-500' :
+                  step.active ? 'bg-purple-600/20 border border-purple-500' :
+                  'bg-white/5 border border-white/10'
+                }`}>
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
+                    {step.done ? '\u2713' : i + 1}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-white font-semibold">{step.label}</h3>
+                    <p className="text-gray-400 text-sm">{step.desc}</p>
+                  </div>
+                  {step.spinning && (
+                    <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+                  )}
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-white font-semibold">Create Project On-Chain</h3>
-                  <p className="text-gray-400 text-sm">Sign transaction to create project with milestones on-chain</p>
-                </div>
-                {depositStep === 'creating_onchain' && (isCreatingOnChain || isCreateTxPending) && (
-                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-                )}
-              </div>
-
-              {/* Step 2: Register with Backend */}
-              <div className={`flex items-center p-4 rounded-xl ${
-                depositStep === 'registering' ? 'bg-purple-600/20 border border-purple-500' :
-                isAfterRegistration ?
-                'bg-green-600/20 border border-green-500' :
-                'bg-white/5 border border-white/10'
-              }`}>
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
-                  {isAfterRegistration ? '✓' : '2'}
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-white font-semibold">Register Project</h3>
-                  <p className="text-gray-400 text-sm">Record project details in the platform</p>
-                </div>
-                {depositStep === 'registering' && (
-                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-                )}
-              </div>
-
-              {/* Step 3: Approve USDC */}
-              <div className={`flex items-center p-4 rounded-xl ${
-                depositStep === 'approving' ? 'bg-purple-600/20 border border-purple-500' :
-                depositStep === 'depositing' || isAfterDeposit ?
-                'bg-green-600/20 border border-green-500' :
-                'bg-white/5 border border-white/10'
-              }`}>
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
-                  {depositStep === 'depositing' || isAfterDeposit ? '✓' : '3'}
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-white font-semibold">Approve USDC</h3>
-                  <p className="text-gray-400 text-sm">Allow EscrowVault to spend your USDC</p>
-                </div>
-                {depositStep === 'approving' && (isApproving || isApproveTxPending) && (
-                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-                )}
-              </div>
-
-              {/* Step 4: Deposit */}
-              <div className={`flex items-center p-4 rounded-xl ${
-                depositStep === 'depositing' ? 'bg-purple-600/20 border border-purple-500' :
-                isAfterDeposit ?
-                'bg-green-600/20 border border-green-500' :
-                'bg-white/5 border border-white/10'
-              }`}>
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
-                  {isAfterDeposit ? '✓' : '4'}
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-white font-semibold">Deposit to Escrow</h3>
-                  <p className="text-gray-400 text-sm">Transfer USDC to escrow vault</p>
-                </div>
-                {depositStep === 'depositing' && (isDepositing || isDepositTxPending) && (
-                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-                )}
-              </div>
-
-              {/* Step 5: Confirm */}
-              <div className={`flex items-center p-4 rounded-xl ${
-                depositStep === 'recording' ? 'bg-purple-600/20 border border-purple-500' :
-                depositStep === 'completed' ?
-                'bg-green-600/20 border border-green-500' :
-                'bg-white/5 border border-white/10'
-              }`}>
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold mr-4">
-                  {depositStep === 'completed' ? '✓' : '5'}
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-white font-semibold">Activate Project</h3>
-                  <p className="text-gray-400 text-sm">Record deposit and activate project</p>
-                </div>
-                {depositStep === 'recording' && (
-                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-                )}
-              </div>
+              ))}
             </div>
 
             {/* Success Message */}

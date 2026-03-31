@@ -1,8 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { PROJECT_MANAGER_ABI, getProjectManagerAddress } from '@/config/contracts';
+import { PROJECT_MANAGER_ABI, getProjectManagerAddress, TX_CONFIRMATIONS } from '@/config/contracts';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+/** Best-effort write to pending_transactions */
+async function writePendingTx(params: {
+  entityType: string;
+  entityId: string;
+  action: string;
+  txHash: string;
+  walletAddress: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    await fetch(`${API_URL}/api/transactions/pending`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+  } catch { /* best effort */ }
+}
+
+async function deletePendingTx(txHash: string) {
+  try {
+    await fetch(`${API_URL}/api/transactions/pending/${txHash}`, { method: 'DELETE' });
+  } catch { /* best effort */ }
+}
 
 interface Milestone {
   id: string;
@@ -24,6 +50,7 @@ interface Milestone {
 
 interface Props {
   milestone: Milestone;
+  projectId?: string;
   isClient: boolean;
   isDeveloper: boolean;
   onUpdate: () => void;
@@ -52,7 +79,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   },
 };
 
-export default function MilestoneCard({ milestone, isClient, isDeveloper, onUpdate }: Props) {
+export default function MilestoneCard({ milestone, projectId, isClient, isDeveloper, onUpdate }: Props) {
   const { address } = useAccount();
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState('');
@@ -72,20 +99,41 @@ export default function MilestoneCard({ milestone, isClient, isDeveloper, onUpda
 
   const { isLoading: isApproveTxPending, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
     hash: approveHash,
+    confirmations: TX_CONFIRMATIONS,
   });
 
-  // When on-chain approval tx succeeds, refresh data
-  if (approveHash && isApproveSuccess && isUpdating) {
-    setIsUpdating(false);
-    setReviewNotes('');
-    onUpdate();
-  }
+  // Write pending tx when we get approveHash
+  useEffect(() => {
+    if (approveHash && projectId && address) {
+      writePendingTx({
+        entityType: 'project',
+        entityId: projectId,
+        action: 'approve_milestone',
+        txHash: approveHash,
+        walletAddress: address,
+        metadata: { milestoneIndex: milestone.onChainIndex },
+      });
+    }
+  }, [approveHash]);
+
+  // When on-chain approval tx succeeds, clean up and refresh data
+  useEffect(() => {
+    if (approveHash && isApproveSuccess && isUpdating) {
+      deletePendingTx(approveHash);
+      setIsUpdating(false);
+      setReviewNotes('');
+      onUpdate();
+    }
+  }, [approveHash, isApproveSuccess]);
 
   // Show on-chain error
-  if (approveOnChainError && isUpdating) {
-    setError(approveOnChainError.message);
-    setIsUpdating(false);
-  }
+  useEffect(() => {
+    if (approveOnChainError && isUpdating) {
+      if (approveHash) deletePendingTx(approveHash);
+      setError(approveOnChainError.message);
+      setIsUpdating(false);
+    }
+  }, [approveOnChainError]);
 
   const generateMessage = (action: string) => {
     const timestamp = Date.now();
