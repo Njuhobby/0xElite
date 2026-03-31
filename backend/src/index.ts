@@ -13,9 +13,9 @@ import reviewsRouter from './api/routes/reviews';
 import disputesRouter from './api/routes/disputes';
 import adminRouter, { initialize as initializeAdmin } from './api/routes/admin';
 import notificationsRouter from './api/routes/notifications';
+import transactionsRouter from './api/routes/transactions';
 import { pool } from './config/database';
-import { startMilestoneListener } from './services/eventListeners/milestoneListener';
-import { startEventListeners as startStakeListener } from './services/eventListeners/stakeListener';
+import { startPendingTransactionPoller } from './services/pendingTransactionPoller';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -118,6 +118,7 @@ app.use('/api/reviews', reviewsRouter);
 app.use('/api/disputes', disputesRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/transactions', transactionsRouter);
 
 // 404 handler
 app.use((req, res) => {
@@ -142,22 +143,12 @@ app.listen(PORT, async () => {
   console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`✓ CORS enabled for: ${process.env.ALLOWED_ORIGINS || 'http://localhost:3000'}`);
 
-  // Start milestone event listener
-  if (projectManagerAddress) {
-    try {
-      await startMilestoneListener(projectManagerAddress);
-      console.log('✓ Milestone event listener started');
-    } catch (error) {
-      console.error('Failed to start milestone event listener:', error);
-    }
-  }
-
-  // Start stake event listener
+  // Start pending transaction poller
   try {
-    await startStakeListener();
-    console.log('✓ Stake event listener started');
+    startPendingTransactionPoller(provider, projectManagerContract);
+    console.log('✓ Pending transaction poller started');
   } catch (error) {
-    console.error('Failed to start stake event listener:', error);
+    console.error('Failed to start pending transaction poller:', error);
   }
 });
 
