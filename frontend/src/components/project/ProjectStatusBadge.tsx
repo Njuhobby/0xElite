@@ -4,8 +4,12 @@ interface Props {
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: {
-    label: 'Finding Developer',
+    label: 'Draft',
     className: 'bg-yellow-500/20 border-yellow-500/30 text-yellow-300',
+  },
+  deposited: {
+    label: 'Awaiting Developer',
+    className: 'bg-violet-500/20 border-violet-500/30 text-violet-300',
   },
   active: {
     label: 'In Progress',

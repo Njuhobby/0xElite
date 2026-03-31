@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useSignMessage } from 'wagmi';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import CreateProjectModal from '@/components/client/CreateProjectModal';
 
 interface Project {
   id: string;
@@ -16,13 +16,12 @@ interface Project {
   createdAt: string;
 }
 
-const STATUS_FILTERS = ['all', 'draft', 'open', 'assigned', 'in_progress', 'completed', 'cancelled', 'disputed'] as const;
+const STATUS_FILTERS = ['all', 'draft', 'deposited', 'active', 'completed', 'cancelled', 'disputed'] as const;
 
 const statusConfig: Record<string, { color: string; label: string }> = {
   draft: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: 'Draft' },
-  open: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Open' },
-  assigned: { color: 'bg-violet-50 text-violet-700 border-violet-200', label: 'Assigned' },
-  in_progress: { color: 'bg-amber-50 text-amber-700 border-amber-200', label: 'In Progress' },
+  deposited: { color: 'bg-violet-50 text-violet-700 border-violet-200', label: 'Awaiting Developer' },
+  active: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'In Progress' },
   completed: { color: 'bg-green-50 text-green-700 border-green-200', label: 'Completed' },
   cancelled: { color: 'bg-red-50 text-red-700 border-red-200', label: 'Cancelled' },
   disputed: { color: 'bg-orange-50 text-orange-700 border-orange-200', label: 'Disputed' },
@@ -30,11 +29,13 @@ const statusConfig: Record<string, { color: string; label: string }> = {
 
 export default function ClientProjectsPage() {
   const { address } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [total, setTotal] = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (address) {
@@ -72,6 +73,36 @@ export default function ClientProjectsPage() {
     }
   };
 
+  const handleDelete = async (projectId: string) => {
+    if (!address || !confirm('Are you sure you want to delete this draft project?')) return;
+
+    try {
+      setDeletingId(projectId);
+      const message = `Delete project ${projectId}\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
+      const signature = await signMessageAsync({ message });
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/projects/${projectId}`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, message, signature }),
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to delete project');
+      }
+
+      await fetchProjects();
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-6">
@@ -79,15 +110,15 @@ export default function ClientProjectsPage() {
           <h1 className="text-2xl font-bold text-gray-900">My Projects</h1>
           <p className="text-gray-500 text-sm mt-1">Manage your projects and track progress</p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
+        <Link
+          href="/dashboard/client/projects/create"
           className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 rounded-lg text-white text-sm font-semibold hover:bg-violet-700 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           Create Project
-        </button>
+        </Link>
       </div>
 
       {/* Status Filter */}
@@ -128,12 +159,12 @@ export default function ClientProjectsPage() {
               : 'Create your first project to get started.'}
           </p>
           {statusFilter === 'all' && (
-            <button
-              onClick={() => setShowCreateModal(true)}
+            <Link
+              href="/dashboard/client/projects/create"
               className="inline-flex items-center px-5 py-2.5 bg-violet-600 rounded-lg text-white text-sm font-semibold hover:bg-violet-700 transition-colors"
             >
               Create Project
-            </button>
+            </Link>
           )}
         </div>
       ) : (
@@ -173,7 +204,21 @@ export default function ClientProjectsPage() {
                       </div>
                     )}
                   </div>
-                  <span className="text-violet-600 text-sm font-medium">View Details &rarr;</span>
+                  <div className="flex items-center gap-3">
+                    {project.status === 'draft' && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleDelete(project.id);
+                        }}
+                        disabled={deletingId === project.id}
+                        className="px-3 py-1 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+                      >
+                        {deletingId === project.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    )}
+                    <span className="text-violet-600 text-sm font-medium">View Details &rarr;</span>
+                  </div>
                 </div>
 
                 {project.requiredSkills && project.requiredSkills.length > 0 && (
@@ -199,16 +244,6 @@ export default function ClientProjectsPage() {
         </div>
       )}
 
-      {/* Create Project Modal */}
-      {showCreateModal && (
-        <CreateProjectModal
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={() => {
-            setShowCreateModal(false);
-            fetchProjects();
-          }}
-        />
-      )}
     </div>
   );
 }

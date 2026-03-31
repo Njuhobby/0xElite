@@ -66,7 +66,7 @@ export async function assignDeveloperToProject(
 
     if (availableDevelopers.length === 0) {
       logger.info('No available developers for project assignment', { projectId });
-      // Project stays in "draft" status, will be picked up when a developer becomes available
+      // Project stays in "deposited" status, will be picked up when a developer becomes available
       return null;
     }
 
@@ -279,7 +279,7 @@ export async function processPendingQueue(
     const pendingProjectsResult = await db.query(
       `SELECT id, required_skills
        FROM projects
-       WHERE status = 'draft'
+       WHERE status = 'deposited'
        AND assigned_developer IS NULL
        ORDER BY created_at ASC`
     );

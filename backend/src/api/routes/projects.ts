@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import { ethers } from 'ethers';
 import { verifySignature } from '../../utils/signature';
 import { logger } from '../../utils/logger';
-import { assignDeveloperToProject } from '../../services/matchingAlgorithm';
+
 
 const router = express.Router();
 
@@ -191,12 +191,7 @@ router.post('/', async (req: Request, res: Response) => {
       createdMilestones.push(milestoneResult.rows[0]);
     }
 
-    // Trigger auto-assignment
-    logger.info('Triggering auto-assignment for project', { projectId: project.id });
-    const assignedDeveloper = await assignDeveloperToProject(db, projectManagerContract, project.id);
-
-    const assignmentPending = assignedDeveloper === null;
-
+    // Project stays in 'draft' until escrow is deposited
     res.status(201).json({
       id: project.id,
       projectNumber: project.project_number,
@@ -205,9 +200,9 @@ router.post('/', async (req: Request, res: Response) => {
       description: project.description,
       requiredSkills: project.required_skills,
       totalBudget: project.total_budget,
-      status: assignmentPending ? 'draft' : 'active',
-      assignedDeveloper,
-      assignmentPending,
+      status: 'draft',
+      assignedDeveloper: null,
+      assignmentPending: true,
       milestones: createdMilestones.map((m: any) => ({
         id: m.id,
         milestoneNumber: m.milestone_number,
@@ -218,9 +213,7 @@ router.post('/', async (req: Request, res: Response) => {
         status: m.status,
       })),
       createdAt: project.created_at,
-      message: assignmentPending
-        ? 'Project created successfully. Searching for available developers...'
-        : 'Project created and developer assigned successfully!',
+      message: 'Project created successfully. Deposit escrow to activate and find a developer.',
     });
   } catch (error: any) {
     logger.error('Error creating project', { error });
@@ -395,10 +388,10 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     // Check status
-    if (project.status !== 'draft') {
+    if (project.status !== 'draft' && project.status !== 'deposited') {
       return res.status(403).json({
         error: 'FORBIDDEN',
-        message: `Cannot edit project in '${project.status}' status. Only draft projects can be edited.`,
+        message: `Cannot edit project in '${project.status}' status. Only draft or deposited projects can be edited.`,
       });
     }
 
@@ -683,10 +676,7 @@ router.post('/register', async (req: Request, res: Response) => {
       createdMilestones.push(milestoneResult.rows[0]);
     }
 
-    // Trigger auto-assignment
-    logger.info('Triggering auto-assignment for V2 project', { projectId: project.id });
-    const assignedDeveloper = await assignDeveloperToProject(db, projectManagerContract, project.id);
-
+    // Project stays in 'draft' until escrow is deposited
     res.status(201).json({
       id: project.id,
       projectNumber: project.project_number,
@@ -696,9 +686,9 @@ router.post('/register', async (req: Request, res: Response) => {
       description: project.description,
       requiredSkills: project.required_skills,
       totalBudget: project.total_budget,
-      status: assignedDeveloper ? 'active' : 'draft',
+      status: 'draft',
       usesOnchainMilestones: true,
-      assignedDeveloper,
+      assignedDeveloper: null,
       milestones: createdMilestones.map((m: any) => ({
         id: m.id,
         milestoneNumber: m.milestone_number,
@@ -717,6 +707,75 @@ router.post('/register', async (req: Request, res: Response) => {
     res.status(500).json({
       error: 'INTERNAL_ERROR',
       message: 'Failed to register project',
+    });
+  }
+});
+
+// =====================================================
+// DELETE /api/projects/:id - Delete Draft Project
+// =====================================================
+
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { address, message, signature } = req.body;
+
+    if (!address || !message || !signature) {
+      return res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Address, message, and signature required',
+      });
+    }
+
+    // Verify signature
+    const isValidSignature = verifySignature(message, signature, address);
+    if (!isValidSignature) {
+      return res.status(401).json({
+        error: 'INVALID_SIGNATURE',
+        message: 'Wallet signature verification failed',
+      });
+    }
+
+    // Fetch project
+    const projectResult = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
+
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'NOT_FOUND',
+        message: 'Project not found',
+      });
+    }
+
+    const project = projectResult.rows[0];
+
+    // Check ownership
+    if (project.client_address !== address.toLowerCase()) {
+      return res.status(403).json({
+        error: 'FORBIDDEN',
+        message: 'Only project owner can delete project',
+      });
+    }
+
+    // Only draft projects can be deleted
+    if (project.status !== 'draft') {
+      return res.status(403).json({
+        error: 'FORBIDDEN',
+        message: `Cannot delete project in '${project.status}' status. Only draft projects can be deleted.`,
+      });
+    }
+
+    // Delete milestones first (CASCADE should handle this, but be explicit)
+    await db.query('DELETE FROM milestones WHERE project_id = $1', [id]);
+    await db.query('DELETE FROM projects WHERE id = $1', [id]);
+
+    res.status(200).json({
+      message: 'Project deleted successfully',
+    });
+  } catch (error: any) {
+    logger.error('Error deleting project', { error });
+    res.status(500).json({
+      error: 'INTERNAL_ERROR',
+      message: 'Failed to delete project',
     });
   }
 });

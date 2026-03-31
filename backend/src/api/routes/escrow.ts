@@ -2,17 +2,21 @@ import express, { Request, Response } from 'express';
 import { Pool } from 'pg';
 import { ethers } from 'ethers';
 import { verifySignature } from '../../utils/signature';
+import { assignDeveloperToProject } from '../../services/matchingAlgorithm';
+import { logger } from '../../utils/logger';
 
 const router = express.Router();
 
 let db: Pool;
 let escrowVaultContract: ethers.Contract;
 let escrowVaultAddress: string;
+let projectManagerContract: ethers.Contract;
 
-export function initialize(database: Pool, contract: ethers.Contract) {
+export function initialize(database: Pool, contract: ethers.Contract, pmContract: ethers.Contract) {
   db = database;
   escrowVaultContract = contract;
   escrowVaultAddress = contract.target as string;
+  projectManagerContract = pmContract;
 }
 
 /**
@@ -42,7 +46,7 @@ router.post('/deposit', async (req: Request, res: Response) => {
 
     // Get project to verify ownership and budget
     const projectResult = await db.query(
-      'SELECT id, client_address, total_budget, escrow_deposited FROM projects WHERE id = $1',
+      'SELECT id, client_address, total_budget, escrow_deposited, contract_project_id FROM projects WHERE id = $1',
       [projectId]
     );
 
@@ -107,12 +111,26 @@ router.post('/deposit', async (req: Request, res: Response) => {
           escrow_deposited = true,
           escrow_deposit_tx_hash = $1,
           escrow_deposited_at = NOW(),
-          status = 'active'
+          status = 'deposited'
         WHERE id = $2 AND escrow_deposited = false`,
         [txHash, projectId]
       );
 
       await client.query('COMMIT');
+
+      // Trigger auto-assignment now that escrow is deposited
+      logger.info('Triggering auto-assignment after escrow deposit', { projectId });
+      try {
+        const assignedDeveloper = await assignDeveloperToProject(db, projectManagerContract, projectId);
+        if (assignedDeveloper) {
+          logger.info('Developer auto-assigned after escrow deposit', { projectId, assignedDeveloper });
+        } else {
+          logger.info('No matching developer found for project', { projectId });
+        }
+      } catch (assignError) {
+        // Don't fail the deposit response if assignment fails
+        logger.error('Auto-assignment failed after escrow deposit', { projectId, error: assignError });
+      }
 
       // Get updated escrow info
       const escrowResult = await db.query(

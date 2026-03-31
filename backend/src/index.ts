@@ -86,7 +86,7 @@ const escrowVaultContract = new ethers.Contract(escrowVaultAddress, escrowVaultA
 initializeProjects(db, projectManagerContract);
 initializeMilestones(db, projectManagerContract, escrowVaultContract);
 initializeClients(db);
-initializeEscrow(db, escrowVaultContract);
+initializeEscrow(db, escrowVaultContract, projectManagerContract);
 initializeAdmin(projectManagerContract);
 
 // Middleware

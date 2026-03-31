@@ -35,9 +35,8 @@ export default function DeveloperProjectsPage() {
   };
 
   const statusConfig: Record<string, { color: string; label: string }> = {
-    open: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Open' },
-    assigned: { color: 'bg-violet-50 text-violet-700 border-violet-200', label: 'Assigned' },
-    in_progress: { color: 'bg-amber-50 text-amber-700 border-amber-200', label: 'In Progress' },
+    deposited: { color: 'bg-violet-50 text-violet-700 border-violet-200', label: 'Awaiting Developer' },
+    active: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'In Progress' },
     completed: { color: 'bg-green-50 text-green-700 border-green-200', label: 'Completed' },
     cancelled: { color: 'bg-red-50 text-red-700 border-red-200', label: 'Cancelled' },
   };

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import SubmitReviewModal from '@/components/reviews/SubmitReviewModal';
 
@@ -56,9 +56,8 @@ interface ReviewData {
 
 const statusConfig: Record<string, { color: string; label: string }> = {
   draft: { color: 'bg-gray-100 text-gray-600 border-gray-200', label: 'Draft' },
-  open: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Open' },
-  assigned: { color: 'bg-violet-50 text-violet-700 border-violet-200', label: 'Assigned' },
-  in_progress: { color: 'bg-amber-50 text-amber-700 border-amber-200', label: 'In Progress' },
+  deposited: { color: 'bg-violet-50 text-violet-700 border-violet-200', label: 'Awaiting Developer' },
+  active: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'In Progress' },
   completed: { color: 'bg-green-50 text-green-700 border-green-200', label: 'Completed' },
   cancelled: { color: 'bg-red-50 text-red-700 border-red-200', label: 'Cancelled' },
   disputed: { color: 'bg-orange-50 text-orange-700 border-orange-200', label: 'Disputed' },
@@ -70,6 +69,7 @@ export default function ClientProjectDetailPage() {
   const { id } = useParams();
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  const router = useRouter();
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
@@ -159,6 +159,35 @@ export default function ClientProjectDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!address || !project || !confirm('Are you sure you want to delete this draft project?')) return;
+
+    try {
+      setActionLoading('delete');
+      const message = `Delete project ${project.id}\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
+      const signature = await signMessageAsync({ message });
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/projects/${project.id}`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, message, signature }),
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to delete project');
+      }
+
+      router.push('/dashboard/client/projects');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete project');
+      setActionLoading(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -208,9 +237,20 @@ export default function ClientProjectDetailPage() {
               #{project.projectNumber} &middot; Created {new Date(project.createdAt).toLocaleDateString()}
             </p>
           </div>
-          <span className={`px-3 py-1 rounded-full text-xs font-medium border ${statusConfig[project.status]?.color || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-            {statusConfig[project.status]?.label || project.status.replace('_', ' ')}
-          </span>
+          <div className="flex items-center gap-3">
+            {project.status === 'draft' && (
+              <button
+                onClick={handleDelete}
+                disabled={actionLoading === 'delete'}
+                className="px-3 py-1 bg-red-50 border border-red-200 rounded-full text-red-600 text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+              >
+                {actionLoading === 'delete' ? 'Deleting...' : 'Delete'}
+              </button>
+            )}
+            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${statusConfig[project.status]?.color || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+              {statusConfig[project.status]?.label || project.status.replace('_', ' ')}
+            </span>
+          </div>
         </div>
 
         <p className="text-gray-600 text-sm leading-relaxed mb-5">{project.description}</p>
