@@ -13,7 +13,7 @@ import reviewsRouter from './api/routes/reviews';
 import disputesRouter from './api/routes/disputes';
 import adminRouter, { initialize as initializeAdmin } from './api/routes/admin';
 import notificationsRouter from './api/routes/notifications';
-import transactionsRouter from './api/routes/transactions';
+import transactionsRouter, { initialize as initializeTransactions } from './api/routes/transactions';
 import { pool } from './config/database';
 import { startPendingTransactionPoller } from './services/pendingTransactionPoller';
 
@@ -88,6 +88,7 @@ initializeMilestones(db, projectManagerContract, escrowVaultContract);
 initializeClients(db);
 initializeEscrow(db, escrowVaultContract, projectManagerContract);
 initializeAdmin(projectManagerContract);
+initializeTransactions(provider, projectManagerContract);
 
 // Middleware
 app.use(cors({
