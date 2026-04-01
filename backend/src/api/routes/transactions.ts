@@ -1,8 +1,21 @@
 import express, { Request, Response } from 'express';
+import { ethers } from 'ethers';
 import { pool } from '../../config/database';
 import { logger } from '../../utils/logger';
+import { processCompletedAction } from '../../services/pendingTxActions';
 
 const router = express.Router();
+
+let provider: ethers.JsonRpcProvider;
+let projectManagerContract: ethers.Contract;
+
+export function initialize(
+  rpcProvider: ethers.JsonRpcProvider,
+  pmContract: ethers.Contract
+) {
+  provider = rpcProvider;
+  projectManagerContract = pmContract;
+}
 
 /**
  * POST /api/transactions/pending
@@ -71,24 +84,59 @@ router.get('/pending', async (req: Request, res: Response) => {
 
 /**
  * DELETE /api/transactions/pending/:txHash
- * Frontend cleans up after confirmation or failure
+ *
+ * Frontend calls this after confirming the tx on-chain (via useWaitForTransactionReceipt).
+ * The endpoint processes the action side-effects and deletes the pending record
+ * in a single atomic DB transaction.
  */
 router.delete('/pending/:txHash', async (req: Request, res: Response) => {
-  try {
-    const { txHash } = req.params;
+  const { txHash } = req.params;
+  const client = await pool.connect();
 
-    await pool.query(
-      'DELETE FROM pending_transactions WHERE tx_hash = $1',
+  try {
+    await client.query('BEGIN');
+
+    // 1. Lock + fetch the pending record
+    const result = await client.query(
+      'SELECT * FROM pending_transactions WHERE tx_hash = $1 FOR UPDATE',
       [txHash]
     );
 
-    res.json({ success: true });
+    if (result.rows.length === 0) {
+      await client.query('COMMIT');
+      logger.warn('DELETE /pending/:txHash — record not found (already processed or never created)', { txHash });
+      return res.json({ success: true }); // idempotent
+    }
+
+    const row = result.rows[0];
+
+    // 2. Process the action (update entity status, etc.)
+    const actionResult = await processCompletedAction(client, row, provider, projectManagerContract);
+
+    // 3. Delete the pending record
+    await client.query('DELETE FROM pending_transactions WHERE tx_hash = $1', [txHash]);
+
+    await client.query('COMMIT');
+
+    logger.info('DELETE /pending/:txHash committed', { txHash, action: row.action, data: actionResult.data });
+
+    // 4. Best-effort post-commit work (e.g. auto-assignment)
+    if (actionResult.postCommit) {
+      actionResult.postCommit().catch((err) => {
+        logger.error('Post-commit action failed', { txHash, error: err });
+      });
+    }
+
+    res.json({ success: true, action: actionResult.action, data: actionResult.data });
   } catch (error: any) {
-    logger.error('Error deleting pending transaction', { error });
+    await client.query('ROLLBACK');
+    logger.error('Error in DELETE /pending/:txHash', { txHash, error });
     res.status(500).json({
       error: 'INTERNAL_ERROR',
-      message: 'Failed to delete pending transaction',
+      message: 'Failed to process pending transaction',
     });
+  } finally {
+    client.release();
   }
 });
 
