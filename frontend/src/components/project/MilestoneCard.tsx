@@ -6,7 +6,7 @@ import { PROJECT_MANAGER_ABI, getProjectManagerAddress, TX_CONFIRMATIONS } from 
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-/** Best-effort write to pending_transactions */
+/** Write to pending_transactions. Throws on failure. */
 async function writePendingTx(params: {
   entityType: string;
   entityId: string;
@@ -15,19 +15,24 @@ async function writePendingTx(params: {
   walletAddress: string;
   metadata?: Record<string, unknown>;
 }) {
-  try {
-    await fetch(`${API_URL}/api/transactions/pending`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-  } catch { /* best effort */ }
+  const res = await fetch(`${API_URL}/api/transactions/pending`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || 'Failed to record pending transaction');
+  }
 }
 
-async function deletePendingTx(txHash: string) {
+async function deletePendingTx(txHash: string): Promise<{ success?: boolean; action?: string; data?: Record<string, unknown> }> {
   try {
-    await fetch(`${API_URL}/api/transactions/pending/${txHash}`, { method: 'DELETE' });
-  } catch { /* best effort */ }
+    const res = await fetch(`${API_URL}/api/transactions/pending/${txHash}`, { method: 'DELETE' });
+    return await res.json();
+  } catch {
+    return {};
+  }
 }
 
 interface Milestone {
@@ -102,7 +107,7 @@ export default function MilestoneCard({ milestone, projectId, isClient, isDevelo
     confirmations: TX_CONFIRMATIONS,
   });
 
-  // Write pending tx when we get approveHash
+  // Write pending tx when we get approveHash (safety net for poller)
   useEffect(() => {
     if (approveHash && projectId && address) {
       writePendingTx({
@@ -112,26 +117,41 @@ export default function MilestoneCard({ milestone, projectId, isClient, isDevelo
         txHash: approveHash,
         walletAddress: address,
         metadata: { milestoneIndex: milestone.onChainIndex },
-      });
+      }).catch(() => {}); // best-effort early write
     }
   }, [approveHash]);
 
-  // When on-chain approval tx succeeds, clean up and refresh data
+  // When on-chain approval tx succeeds, ensure pending record exists, then process+delete
   useEffect(() => {
-    if (approveHash && isApproveSuccess && isUpdating) {
-      deletePendingTx(approveHash);
-      setIsUpdating(false);
-      setReviewNotes('');
-      onUpdate();
+    if (approveHash && isApproveSuccess && isUpdating && projectId && address) {
+      (async () => {
+        await writePendingTx({
+          entityType: 'project',
+          entityId: projectId,
+          action: 'approve_milestone',
+          txHash: approveHash,
+          walletAddress: address,
+          metadata: { milestoneIndex: milestone.onChainIndex },
+        });
+        await deletePendingTx(approveHash);
+        setIsUpdating(false);
+        setReviewNotes('');
+        onUpdate();
+      })().catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to process milestone approval');
+        setIsUpdating(false);
+      });
     }
   }, [approveHash, isApproveSuccess]);
 
   // Show on-chain error
   useEffect(() => {
     if (approveOnChainError && isUpdating) {
-      if (approveHash) deletePendingTx(approveHash);
-      setError(approveOnChainError.message);
-      setIsUpdating(false);
+      (async () => {
+        if (approveHash) await deletePendingTx(approveHash);
+        setError(approveOnChainError.message);
+        setIsUpdating(false);
+      })();
     }
   }, [approveOnChainError]);
 
