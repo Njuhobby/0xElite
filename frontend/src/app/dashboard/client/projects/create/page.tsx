@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useRouter } from 'next/navigation';
-import { parseUnits, keccak256, encodePacked, Address, decodeEventLog } from 'viem';
+import { parseUnits, keccak256, encodePacked, Address } from 'viem';
 import MilestoneManager from '@/components/project/MilestoneManager';
 import { PROJECT_MANAGER_ABI, getProjectManagerAddress, getEscrowVaultAddress, TX_CONFIRMATIONS } from '@/config/contracts';
 
@@ -60,7 +60,7 @@ function computeMilestoneHash(milestone: Milestone): `0x${string}` {
   ));
 }
 
-/** Best-effort write to pending_transactions */
+/** Write to pending_transactions. Throws on failure. */
 async function writePendingTx(params: {
   entityType: string;
   entityId: string;
@@ -69,22 +69,27 @@ async function writePendingTx(params: {
   walletAddress: string;
   metadata?: Record<string, unknown>;
 }) {
-  try {
-    await fetch(`${API_URL}/api/transactions/pending`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-  } catch { /* best effort */ }
+  const res = await fetch(`${API_URL}/api/transactions/pending`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || 'Failed to record pending transaction');
+  }
 }
 
-async function deletePendingTx(txHash: string) {
+async function deletePendingTx(txHash: string): Promise<{ success?: boolean; action?: string; data?: Record<string, unknown> }> {
   try {
-    await fetch(`${API_URL}/api/transactions/pending/${txHash}`, { method: 'DELETE' });
-  } catch { /* best effort */ }
+    const res = await fetch(`${API_URL}/api/transactions/pending/${txHash}`, { method: 'DELETE' });
+    return await res.json();
+  } catch {
+    return {};
+  }
 }
 
-type DepositStep = 'form' | 'saving_draft' | 'creating_onchain' | 'updating_contract' | 'approving' | 'depositing' | 'recording' | 'completed';
+type DepositStep = 'form' | 'saving_draft' | 'creating_onchain' | 'approving' | 'depositing' | 'recording' | 'completed';
 
 export default function CreateProjectPage() {
   const { address } = useAccount();
@@ -120,7 +125,7 @@ export default function CreateProjectPage() {
     error: createError,
   } = useWriteContract();
 
-  const { isLoading: isCreateTxPending, isSuccess: isCreateSuccess, data: createReceipt } = useWaitForTransactionReceipt({
+  const { isLoading: isCreateTxPending, isSuccess: isCreateSuccess } = useWaitForTransactionReceipt({
     hash: createHash,
     confirmations: TX_CONFIRMATIONS,
   });
@@ -194,46 +199,29 @@ export default function CreateProjectPage() {
     return errors.length === 0;
   };
 
-  /** After on-chain creation confirms, extract contractProjectId and update backend */
-  const updateContractId = async (projectId: string, receipt: any) => {
+  /** After on-chain creation confirms, ensure pending record exists, then DELETE to process */
+  const finalizeCreateProject = async (projectId: string, txHash: string) => {
     try {
-      setDepositStep('updating_contract');
       setError('');
 
-      // Parse ProjectCreated event from receipt logs
-      let contractProjectId: string | null = null;
-      for (const log of receipt.logs) {
-        try {
-          const decoded = decodeEventLog({
-            abi: PROJECT_MANAGER_ABI,
-            data: log.data,
-            topics: log.topics,
-          });
-          if (decoded.eventName === 'ProjectCreated') {
-            contractProjectId = (decoded.args as any).projectId.toString();
-            break;
-          }
-        } catch { /* not our event */ }
+      // Ensure the pending record exists before processing
+      if (address) {
+        await writePendingTx({
+          entityType: 'project',
+          entityId: projectId,
+          action: 'create_project',
+          txHash,
+          walletAddress: address,
+        });
       }
+
+      const result = await deletePendingTx(txHash);
+      const contractProjectId = result.data?.contractProjectId as string | undefined;
 
       if (!contractProjectId) {
         setError('Could not extract project ID from transaction');
         return;
       }
-
-      const response = await fetch(`${API_URL}/api/projects/${projectId}/contract`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, contractProjectId }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update contract ID');
-      }
-
-      // Clean up pending tx for create
-      if (createHash) await deletePendingTx(createHash);
 
       setCreatedProject({ id: projectId, contractProjectId });
       setDepositStep('approving');
@@ -277,60 +265,27 @@ export default function CreateProjectPage() {
   };
 
   const recordDepositInBackend = async (txHash: string) => {
-    if (!createdProject) return;
+    if (!createdProject || !address) return;
     try {
       setError('');
       setDepositStep('recording');
 
-      const message = `Record escrow deposit for project ${createdProject.id}\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
+      await writePendingTx({
+        entityType: 'project',
+        entityId: createdProject.id,
+        action: 'deposit_escrow',
+        txHash,
+        walletAddress: address,
+        metadata: { amount: parseFloat(formData.totalBudget) },
+      });
+      await deletePendingTx(txHash);
 
-      signMessage(
-        { message },
-        {
-          onSuccess: async (signature) => {
-            try {
-              const response = await fetch(
-                `${API_URL}/api/escrow/deposit`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    address,
-                    message,
-                    signature,
-                    projectId: createdProject.id,
-                    amount: parseFloat(formData.totalBudget),
-                    txHash,
-                  }),
-                }
-              );
-
-              if (!response.ok) {
-                const errorData = await response.json();
-                setError(errorData.message || 'Failed to record deposit');
-                setDepositStep('depositing');
-                return;
-              }
-
-              await deletePendingTx(txHash);
-              setDepositStep('completed');
-              setTimeout(() => {
-                router.push(`/dashboard/client/projects/${createdProject.id}`);
-              }, 2000);
-            } catch (err) {
-              setError(err instanceof Error ? err.message : 'Failed to record deposit');
-              setDepositStep('depositing');
-            }
-          },
-          onError: (error) => {
-            setError(error.message);
-            setDepositStep('depositing');
-          },
-        }
-      );
+      setDepositStep('completed');
+      setTimeout(() => {
+        router.push(`/dashboard/client/projects/${createdProject.id}`);
+      }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setDepositStep('depositing');
+      setError(err instanceof Error ? err.message : 'Failed to activate project');
     }
   };
 
@@ -344,13 +299,13 @@ export default function CreateProjectPage() {
 
   // Effect to handle on-chain project creation confirmation
   useEffect(() => {
-    if (createHash && isCreateSuccess && createReceipt && depositStep === 'creating_onchain' && !transitioningRef.current && createdProject) {
+    if (createHash && isCreateSuccess && depositStep === 'creating_onchain' && !transitioningRef.current && createdProject) {
       transitioningRef.current = true;
-      updateContractId(createdProject.id, createReceipt);
+      finalizeCreateProject(createdProject.id, createHash);
     }
-  }, [createHash, isCreateSuccess, createReceipt, depositStep, createdProject]);
+  }, [createHash, isCreateSuccess, depositStep, createdProject]);
 
-  // Write pending tx when we get approveHash
+  // Write pending tx when we get approveHash (safety net for poller)
   useEffect(() => {
     if (approveHash && createdProject && address) {
       writePendingTx({
@@ -360,20 +315,32 @@ export default function CreateProjectPage() {
         txHash: approveHash,
         walletAddress: address,
         metadata: { amount: parseFloat(formData.totalBudget) },
-      });
+      }).catch(() => {}); // best-effort early write
     }
   }, [approveHash]);
 
   // Effect to handle approval confirmation
   useEffect(() => {
-    if (approveHash && !isApproveTxPending && depositStep === 'approving' && !transitioningRef.current) {
+    if (approveHash && !isApproveTxPending && depositStep === 'approving' && !transitioningRef.current && createdProject && address) {
       transitioningRef.current = true;
-      if (approveHash) deletePendingTx(approveHash);
-      handleDepositEscrow();
+      (async () => {
+        await writePendingTx({
+          entityType: 'project',
+          entityId: createdProject.id,
+          action: 'approve_usdc',
+          txHash: approveHash,
+          walletAddress: address,
+          metadata: { amount: parseFloat(formData.totalBudget) },
+        });
+        await deletePendingTx(approveHash);
+        handleDepositEscrow();
+      })().catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to process USDC approval');
+      });
     }
   }, [approveHash, isApproveTxPending, depositStep]);
 
-  // Write pending tx when we get depositHash
+  // Write pending tx when we get depositHash (safety net for poller)
   useEffect(() => {
     if (depositHash && createdProject && address) {
       writePendingTx({
@@ -383,7 +350,7 @@ export default function CreateProjectPage() {
         txHash: depositHash,
         walletAddress: address,
         metadata: { amount: parseFloat(formData.totalBudget) },
-      });
+      }).catch(() => {}); // best-effort early write
     }
   }, [depositHash]);
 
@@ -476,7 +443,7 @@ export default function CreateProjectPage() {
     }
   };
 
-  // Write pending tx when we get createHash
+  // Write pending tx when we get createHash (safety net for poller)
   useEffect(() => {
     if (createHash && createdProject && address) {
       writePendingTx({
@@ -485,7 +452,7 @@ export default function CreateProjectPage() {
         action: 'create_project',
         txHash: createHash,
         walletAddress: address,
-      });
+      }).catch(() => {}); // best-effort early write
     }
   }, [createHash]);
 
@@ -496,8 +463,7 @@ export default function CreateProjectPage() {
 
     const steps = [
       { key: 'saving_draft', label: 'Save Project', desc: 'Create project record in the platform', done: depositStep !== 'saving_draft', active: depositStep === 'saving_draft', spinning: depositStep === 'saving_draft' },
-      { key: 'creating_onchain', label: 'Create On-Chain', desc: 'Sign transaction to create project with milestones on-chain', done: depositStep === 'updating_contract' || isAfterContract, active: depositStep === 'creating_onchain', spinning: depositStep === 'creating_onchain' && (isCreatingOnChain || isCreateTxPending) },
-      { key: 'updating_contract', label: 'Link Contract', desc: 'Link on-chain contract to project', done: isAfterContract, active: depositStep === 'updating_contract', spinning: depositStep === 'updating_contract' },
+      { key: 'creating_onchain', label: 'Create On-Chain', desc: 'Sign transaction to create project with milestones on-chain', done: isAfterContract, active: depositStep === 'creating_onchain', spinning: depositStep === 'creating_onchain' && (isCreatingOnChain || isCreateTxPending) },
       { key: 'approving', label: 'Approve USDC', desc: 'Allow EscrowVault to spend your USDC', done: depositStep === 'depositing' || isAfterDeposit, active: depositStep === 'approving', spinning: depositStep === 'approving' && (isApproving || isApproveTxPending) },
       { key: 'depositing', label: 'Deposit to Escrow', desc: 'Transfer USDC to escrow vault', done: isAfterDeposit, active: depositStep === 'depositing', spinning: depositStep === 'depositing' && (isDepositing || isDepositTxPending) },
       { key: 'recording', label: 'Activate Project', desc: 'Record deposit and activate project', done: depositStep === 'completed', active: depositStep === 'recording', spinning: depositStep === 'recording' },
