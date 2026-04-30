@@ -5,6 +5,7 @@ import { useAccount, useSignMessage } from 'wagmi';
 import { useParams } from 'next/navigation';
 import ProjectStatusBadge from '@/components/project/ProjectStatusBadge';
 import MilestoneCard from '@/components/project/MilestoneCard';
+import RaiseDisputeModal from '@/components/disputes/RaiseDisputeModal';
 
 interface Milestone {
   id: string;
@@ -24,6 +25,7 @@ interface Milestone {
 interface Project {
   id: string;
   projectNumber: number;
+  contractProjectId: string | null;
   clientAddress: string;
   companyName?: string;
   clientEmail?: string;
@@ -73,6 +75,7 @@ export default function ProjectDetailPage() {
   const [escrowData, setEscrowData] = useState<EscrowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
 
   const isClient = connectedAddress?.toLowerCase() === project?.clientAddress.toLowerCase();
   const isDeveloper = connectedAddress?.toLowerCase() === project?.assignedDeveloper?.address.toLowerCase();
@@ -161,11 +164,23 @@ export default function ProjectDetailPage() {
               <h1 className="text-3xl font-bold text-white mb-2">{project.title}</h1>
               <p className="text-gray-300">{project.description}</p>
             </div>
-            <div className="text-right">
-              <p className="text-4xl font-bold text-white mb-1">
-                ${parseFloat(project.totalBudget).toFixed(0)}
-              </p>
-              <p className="text-gray-400">USDC Total</p>
+            <div className="flex flex-col items-end gap-3">
+              <div className="text-right">
+                <p className="text-4xl font-bold text-white mb-1">
+                  ${parseFloat(project.totalBudget).toFixed(0)}
+                </p>
+                <p className="text-gray-400">USDC Total</p>
+              </div>
+              {project.status === 'active' &&
+                project.contractProjectId &&
+                (isClient || isDeveloper) && (
+                  <button
+                    onClick={() => setShowDisputeModal(true)}
+                    className="px-4 py-2 bg-orange-500/20 border border-orange-400/40 rounded-lg text-orange-300 text-sm font-semibold hover:bg-orange-500/30 transition-colors"
+                  >
+                    Raise Dispute
+                  </button>
+                )}
             </div>
           </div>
 
@@ -390,6 +405,15 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       </div>
+
+      {showDisputeModal && project.contractProjectId && (
+        <RaiseDisputeModal
+          projectId={project.id}
+          contractProjectId={project.contractProjectId}
+          userRole={isClient ? 'client' : 'developer'}
+          onClose={() => setShowDisputeModal(false)}
+        />
+      )}
     </div>
   );
 }

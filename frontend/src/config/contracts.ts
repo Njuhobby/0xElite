@@ -126,3 +126,143 @@ export function getEscrowVaultAddress(): `0x${string}` {
   }
   return address as `0x${string}`;
 }
+
+/**
+ * DisputeDAO ABI — write functions used by detail-page panels
+ * (evidence/voting/owner-resolve) plus the view functions needed
+ * for client-side eligibility prechecks.
+ */
+export const DISPUTE_DAO_ABI = [
+  {
+    type: 'function',
+    name: 'createDispute',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'evidenceURI', type: 'string' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'arbitrationFee',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'submitEvidence',
+    inputs: [
+      { name: 'disputeId', type: 'uint256' },
+      { name: 'evidenceURI', type: 'string' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'castVote',
+    inputs: [
+      { name: 'disputeId', type: 'uint256' },
+      { name: 'supportClient', type: 'bool' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'ownerResolve',
+    inputs: [
+      { name: 'disputeId', type: 'uint256' },
+      { name: 'clientWon', type: 'bool' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'hasVoted',
+    inputs: [
+      { name: '', type: 'uint256' },
+      { name: '', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+  },
+] as const;
+
+export function getDisputeDAOAddress(): `0x${string}` {
+  const address = process.env.NEXT_PUBLIC_DISPUTE_DAO_ADDRESS;
+  if (!address) {
+    throw new Error('NEXT_PUBLIC_DISPUTE_DAO_ADDRESS not configured');
+  }
+  return address as `0x${string}`;
+}
+
+/**
+ * Minimal EliteToken ABI — balanceOf is a sufficient UX gate for voting
+ * eligibility. Final voting power is enforced on-chain via getPastVotes.
+ */
+export const ELITE_TOKEN_ABI = [
+  {
+    type: 'function',
+    name: 'balanceOf',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getPastVotes',
+    inputs: [
+      { name: 'account', type: 'address' },
+      { name: 'timepoint', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+] as const;
+
+export function getEliteTokenAddress(): `0x${string}` {
+  const address = process.env.NEXT_PUBLIC_ELITE_TOKEN_ADDRESS;
+  if (!address) {
+    throw new Error('NEXT_PUBLIC_ELITE_TOKEN_ADDRESS not configured');
+  }
+  return address as `0x${string}`;
+}
+
+/**
+ * Minimal USDC (ERC20) ABI — approve + allowance are enough to gate
+ * any USDC-spending action (escrow deposit, dispute fee, etc.).
+ */
+export const USDC_ABI = [
+  {
+    type: 'function',
+    name: 'approve',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'allowance',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+] as const;
+
+export function getUsdcAddress(): `0x${string}` {
+  const address = process.env.NEXT_PUBLIC_USDC_ADDRESS;
+  if (!address) {
+    throw new Error('NEXT_PUBLIC_USDC_ADDRESS not configured');
+  }
+  return address as `0x${string}`;
+}

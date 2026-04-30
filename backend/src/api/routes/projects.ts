@@ -273,11 +273,16 @@ router.get('/:id', async (req: Request, res: Response) => {
       }
     }
 
+    // contract_project_id is bigint-as-text in pg; surface as string when present
+    const contractProjectId =
+      project.contract_project_id != null ? String(project.contract_project_id) : null;
+
     // Public view (default)
     if (!isOwner && !isAssignedDev) {
       return res.json({
         id: project.id,
         projectNumber: project.project_number,
+        contractProjectId,
         title: project.title,
         description: project.description,
         requiredSkills: project.required_skills,
@@ -295,6 +300,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     res.json({
       id: project.id,
       projectNumber: project.project_number,
+      contractProjectId,
       clientAddress: project.client_address,
       companyName: project.company_name,
       clientEmail: isOwner || isAssignedDev ? project.client_email : undefined,

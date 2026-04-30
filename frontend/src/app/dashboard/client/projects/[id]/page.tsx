@@ -5,6 +5,7 @@ import { useAccount, useSignMessage } from 'wagmi';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import SubmitReviewModal from '@/components/reviews/SubmitReviewModal';
+import RaiseDisputeModal from '@/components/disputes/RaiseDisputeModal';
 
 interface Milestone {
   id: string;
@@ -31,6 +32,7 @@ interface DeveloperInfo {
 interface ProjectDetail {
   id: string;
   projectNumber: number;
+  contractProjectId: string | null;
   clientAddress: string;
   title: string;
   description: string;
@@ -77,6 +79,7 @@ export default function ClientProjectDetailPage() {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
   const [hasReviewed, setHasReviewed] = useState(false);
 
   useEffect(() => {
@@ -245,6 +248,14 @@ export default function ClientProjectDetailPage() {
                 className="px-3 py-1 bg-red-50 border border-red-200 rounded-full text-red-600 text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
               >
                 {actionLoading === 'delete' ? 'Deleting...' : 'Delete'}
+              </button>
+            )}
+            {project.status === 'active' && project.contractProjectId && project.assignedDeveloper && (
+              <button
+                onClick={() => setShowDisputeModal(true)}
+                className="px-3 py-1 bg-orange-50 border border-orange-200 rounded-full text-orange-700 text-xs font-medium hover:bg-orange-100 transition-colors"
+              >
+                Raise Dispute
               </button>
             )}
             <span className={`px-3 py-1 rounded-full text-xs font-medium border ${statusConfig[project.status]?.color || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
@@ -468,6 +479,16 @@ export default function ClientProjectDetailPage() {
             setShowReviewModal(false);
             fetchReviews();
           }}
+        />
+      )}
+
+      {/* Raise Dispute Modal */}
+      {showDisputeModal && project.contractProjectId && (
+        <RaiseDisputeModal
+          projectId={project.id}
+          contractProjectId={project.contractProjectId}
+          userRole="client"
+          onClose={() => setShowDisputeModal(false)}
         />
       )}
     </div>
