@@ -29,30 +29,30 @@ export default function DisputeCard({ dispute }: DisputeCardProps) {
 
   return (
     <Link href={`/disputes/${dispute.id}`}>
-      <div className="bg-white/5 border border-white/10 rounded-xl p-5 hover:bg-white/10 transition-all cursor-pointer">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:border-violet-300 hover:shadow-md transition-all cursor-pointer">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <span className="text-white font-semibold">Dispute #{dispute.disputeNumber}</span>
+            <span className="text-gray-900 font-semibold">Dispute #{dispute.disputeNumber}</span>
             <DisputeStatusBadge status={dispute.status} />
           </div>
           {timeLeft && (
-            <span className="text-xs text-gray-400">{timeLeft}</span>
+            <span className="text-xs text-gray-500">{timeLeft}</span>
           )}
         </div>
 
         {dispute.projectTitle && (
-          <p className="text-gray-300 text-sm mb-2">{dispute.projectTitle}</p>
+          <p className="text-gray-700 text-sm mb-2">{dispute.projectTitle}</p>
         )}
 
-        <div className="flex items-center gap-4 text-xs text-gray-400">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
           <span>Filed by {dispute.initiatorRole}</span>
           <span>•</span>
           <span>{new Date(dispute.createdAt).toLocaleDateString()}</span>
         </div>
 
         {dispute.status === 'voting' && (
-          <div className="mt-3 pt-3 border-t border-white/10">
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>Client votes</span>
               <span>Developer votes</span>
             </div>
@@ -64,10 +64,10 @@ export default function DisputeCard({ dispute }: DisputeCardProps) {
         )}
 
         {dispute.status === 'resolved' && dispute.winner && (
-          <div className="mt-3 pt-3 border-t border-white/10">
-            <span className="text-xs">
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <span className="text-xs text-gray-600">
               Winner:{' '}
-              <span className={dispute.winner === 'client' ? 'text-cyan-400' : 'text-purple-400'}>
+              <span className={dispute.winner === 'client' ? 'text-cyan-700 font-medium' : 'text-violet-700 font-medium'}>
                 {dispute.winner}
               </span>
               {dispute.resolvedByOwner && (
@@ -86,13 +86,13 @@ function VoteBar({ clientWeight, developerWeight }: { clientWeight: number; deve
   const clientPct = total > 0 ? (clientWeight / total) * 100 : 50;
 
   return (
-    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden flex">
+    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden flex">
       <div
         className="h-full bg-cyan-500 transition-all"
         style={{ width: `${clientPct}%` }}
       />
       <div
-        className="h-full bg-purple-500 transition-all"
+        className="h-full bg-violet-500 transition-all"
         style={{ width: `${100 - clientPct}%` }}
       />
     </div>
