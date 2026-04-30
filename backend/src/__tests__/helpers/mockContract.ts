@@ -78,9 +78,13 @@ export function createMockDisputeDAOContract() {
     getDisputeCore: jest.fn(),
     getDisputeTimeline: jest.fn(),
     getDisputeVoting: jest.fn(),
+    quorumNumerator: jest.fn().mockResolvedValue(BigInt(25)),
     queryFilter: jest.fn().mockResolvedValue([]),
     on: jest.fn(),
     removeAllListeners: jest.fn(),
+    interface: {
+      parseLog: jest.fn(),
+    },
     filters: {
       Staked: jest.fn(),
     },

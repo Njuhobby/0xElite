@@ -40,31 +40,3 @@ export interface DisputeVote {
   voted_at: Date;
 }
 
-export interface CreateDisputeInput {
-  address: string;
-  message: string;
-  signature: string;
-  projectId: string;
-  evidenceUri: string;
-}
-
-export interface SubmitEvidenceInput {
-  address: string;
-  message: string;
-  signature: string;
-  evidenceUri: string;
-}
-
-export interface CastVoteInput {
-  address: string;
-  message: string;
-  signature: string;
-  supportClient: boolean;
-}
-
-export interface OwnerResolveInput {
-  address: string;
-  message: string;
-  signature: string;
-  clientWon: boolean;
-}

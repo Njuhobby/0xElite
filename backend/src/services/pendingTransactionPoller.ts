@@ -1,21 +1,21 @@
 import { ethers } from 'ethers';
 import { pool } from '../config/database';
 import { logger } from '../utils/logger';
-import { processCompletedAction } from './pendingTxActions';
+import { processCompletedAction, Contracts } from './pendingTxActions';
 
 const CONFIRMATIONS = Number(process.env.CONFIRMATIONS ?? 1);
 const POLL_INTERVAL = Number(process.env.PENDING_TX_POLL_INTERVAL ?? 5000);
 const TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
 let provider: ethers.JsonRpcProvider;
-let projectManagerContract: ethers.Contract;
+let contracts: Contracts;
 
 export function startPendingTransactionPoller(
   rpcProvider: ethers.JsonRpcProvider,
-  pmContract: ethers.Contract
+  contractBag: Contracts
 ) {
   provider = rpcProvider;
-  projectManagerContract = pmContract;
+  contracts = contractBag;
 
   logger.info('Starting pending transaction poller', { interval: POLL_INTERVAL, confirmations: CONFIRMATIONS });
   setInterval(pollPendingTransactions, POLL_INTERVAL);
@@ -73,7 +73,7 @@ async function processPendingTransaction(row: any, currentBlock: number) {
   try {
     await client.query('BEGIN');
 
-    const actionResult = await processCompletedAction(client, row, provider, projectManagerContract);
+    const actionResult = await processCompletedAction(client, row, provider, contracts);
     await client.query('DELETE FROM pending_transactions WHERE tx_hash = $1', [row.tx_hash]);
 
     await client.query('COMMIT');

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ethers } from 'ethers';
 import { pool } from '../../config/database';
-import { verifySignature } from '../../utils/signature';
+import { verifyAdmin } from '../../utils/auth';
 import type { Developer } from '../../types/developer';
 import { createNotification } from '../../services/notificationService';
 import { processPendingQueue } from '../../services/matchingAlgorithm';
@@ -12,44 +12,6 @@ let projectManagerContract: ethers.Contract;
 
 export function initialize(contract: ethers.Contract) {
   projectManagerContract = contract;
-}
-
-/**
- * Read admin addresses from env at call time (not module load) for testability
- */
-function getAdminAddresses(): string[] {
-  const raw = process.env.ADMIN_ADDRESSES || '';
-  return raw
-    .split(',')
-    .map((a) => a.trim().toLowerCase())
-    .filter((a) => a.length > 0);
-}
-
-/**
- * Verify that the caller is an admin: valid signature + address in admin list
- */
-function verifyAdmin(
-  address: string,
-  message: string,
-  signature: string
-): { valid: boolean; error?: { status: number; code: string; message: string } } {
-  const isValidSignature = verifySignature(message, signature, address);
-  if (!isValidSignature) {
-    return {
-      valid: false,
-      error: { status: 401, code: 'INVALID_SIGNATURE', message: 'Wallet signature verification failed' },
-    };
-  }
-
-  const adminAddresses = getAdminAddresses();
-  if (!adminAddresses.includes(address.toLowerCase())) {
-    return {
-      valid: false,
-      error: { status: 403, code: 'FORBIDDEN', message: 'Only admin wallets can perform this action' },
-    };
-  }
-
-  return { valid: true };
 }
 
 /**

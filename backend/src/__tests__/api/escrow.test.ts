@@ -7,6 +7,7 @@ import {
   SAMPLE_PROJECT,
   SAMPLE_ESCROW_DEPOSIT,
   CLIENT_AUTH,
+  ADMIN_AUTH,
 } from '../helpers/fixtures';
 
 // ---- Mocks ----
@@ -236,7 +237,7 @@ describe('GET /api/escrow/:projectId/history', () => {
 // =============================================================================
 describe('POST /api/escrow/freeze', () => {
   const freezeBody = {
-    ...CLIENT_AUTH,
+    ...ADMIN_AUTH,
     projectId: SAMPLE_PROJECT.id,
     reason: 'Dispute filed',
   };
@@ -252,8 +253,16 @@ describe('POST /api/escrow/freeze', () => {
   });
 
   it('returns 400 for missing fields', async () => {
-    const res = await request(app).post('/api/escrow/freeze').send({ ...CLIENT_AUTH });
+    const res = await request(app).post('/api/escrow/freeze').send({ ...ADMIN_AUTH });
     expect(res.status).toBe(400);
+  });
+
+  it('returns 403 for non-admin caller', async () => {
+    const res = await request(app)
+      .post('/api/escrow/freeze')
+      .send({ ...CLIENT_AUTH, projectId: SAMPLE_PROJECT.id, reason: 'oops' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('NOT_AUTHORIZED');
   });
 
   it('returns 404 when project not found', async () => {
@@ -277,7 +286,7 @@ describe('POST /api/escrow/freeze', () => {
 // =============================================================================
 describe('POST /api/escrow/unfreeze', () => {
   const unfreezeBody = {
-    ...CLIENT_AUTH,
+    ...ADMIN_AUTH,
     projectId: SAMPLE_PROJECT.id,
   };
 
@@ -294,6 +303,14 @@ describe('POST /api/escrow/unfreeze', () => {
   it('returns 400 for missing fields', async () => {
     const res = await request(app).post('/api/escrow/unfreeze').send({});
     expect(res.status).toBe(400);
+  });
+
+  it('returns 403 for non-admin caller', async () => {
+    const res = await request(app)
+      .post('/api/escrow/unfreeze')
+      .send({ ...CLIENT_AUTH, projectId: SAMPLE_PROJECT.id });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('NOT_AUTHORIZED');
   });
 
   it('returns 409 when escrow not frozen', async () => {

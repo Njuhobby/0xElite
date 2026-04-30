@@ -2,19 +2,19 @@ import express, { Request, Response } from 'express';
 import { ethers } from 'ethers';
 import { pool } from '../../config/database';
 import { logger } from '../../utils/logger';
-import { processCompletedAction } from '../../services/pendingTxActions';
+import { processCompletedAction, Contracts } from '../../services/pendingTxActions';
 
 const router = express.Router();
 
 let provider: ethers.JsonRpcProvider;
-let projectManagerContract: ethers.Contract;
+let contracts: Contracts;
 
 export function initialize(
   rpcProvider: ethers.JsonRpcProvider,
-  pmContract: ethers.Contract
+  contractBag: Contracts
 ) {
   provider = rpcProvider;
-  projectManagerContract = pmContract;
+  contracts = contractBag;
 }
 
 /**
@@ -111,7 +111,7 @@ router.delete('/pending/:txHash', async (req: Request, res: Response) => {
     const row = result.rows[0];
 
     // 2. Process the action (update entity status, etc.)
-    const actionResult = await processCompletedAction(client, row, provider, projectManagerContract);
+    const actionResult = await processCompletedAction(client, row, provider, contracts);
 
     // 3. Delete the pending record
     await client.query('DELETE FROM pending_transactions WHERE tx_hash = $1', [txHash]);

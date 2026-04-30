@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { Pool } from 'pg';
 import { ethers } from 'ethers';
 import { verifySignature } from '../../utils/signature';
+import { isAdmin } from '../../utils/auth';
 import { assignDeveloperToProject } from '../../services/matchingAlgorithm';
 import { logger } from '../../utils/logger';
 
@@ -352,9 +353,12 @@ router.post('/freeze', async (req: Request, res: Response) => {
       });
     }
 
-    // TODO: Check if address is admin or dispute contract
-    // For now, we'll let the smart contract enforce this
-    // In production, add role-based access control here
+    if (!isAdmin(address)) {
+      return res.status(403).json({
+        error: 'NOT_AUTHORIZED',
+        message: 'Only admin wallets can freeze escrow',
+      });
+    }
 
     // Get project contract_project_id
     const projectResult = await db.query(
@@ -371,8 +375,8 @@ router.post('/freeze', async (req: Request, res: Response) => {
 
     const contractProjectId = projectResult.rows[0].contract_project_id;
 
-    // Call smart contract freeze function
-    // Note: This requires the caller to be DisputeDAO
+    // The contract still enforces this (DisputeDAO/owner only). Backend admin
+    // check above is a UX gate so non-admins fail fast without paying gas.
     try {
       const tx = await escrowVaultContract.freeze(contractProjectId);
       await tx.wait();
@@ -435,6 +439,13 @@ router.post('/unfreeze', async (req: Request, res: Response) => {
       });
     }
 
+    if (!isAdmin(address)) {
+      return res.status(403).json({
+        error: 'NOT_AUTHORIZED',
+        message: 'Only admin wallets can unfreeze escrow',
+      });
+    }
+
     // Get project contract_project_id
     const projectResult = await db.query(
       'SELECT contract_project_id FROM projects WHERE id = $1',
@@ -450,7 +461,6 @@ router.post('/unfreeze', async (req: Request, res: Response) => {
 
     const contractProjectId = projectResult.rows[0].contract_project_id;
 
-    // Call smart contract unfreeze function
     try {
       const tx = await escrowVaultContract.unfreeze(contractProjectId);
       await tx.wait();
