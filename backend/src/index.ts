@@ -16,6 +16,7 @@ import notificationsRouter from './api/routes/notifications';
 import transactionsRouter, { initialize as initializeTransactions } from './api/routes/transactions';
 import { pool } from './config/database';
 import { startPendingTransactionPoller } from './services/pendingTransactionPoller';
+import { startChainReconciler } from './services/chainReconciler';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -29,6 +30,7 @@ const db = pool;
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 const projectManagerAddress = process.env.PROJECT_MANAGER_ADDRESS;
 const escrowVaultAddress = process.env.ESCROW_VAULT_ADDRESS;
+const disputeDAOAddress = process.env.DISPUTE_DAO_ADDRESS;
 
 if (!projectManagerAddress) {
   throw new Error('PROJECT_MANAGER_ADDRESS not configured in .env');
@@ -36,6 +38,10 @@ if (!projectManagerAddress) {
 
 if (!escrowVaultAddress) {
   throw new Error('ESCROW_VAULT_ADDRESS not configured in .env');
+}
+
+if (!disputeDAOAddress) {
+  throw new Error('DISPUTE_DAO_ADDRESS not configured in .env');
 }
 
 // ProjectManager contract ABI (V2 — includes milestones)
@@ -77,10 +83,30 @@ const escrowVaultAbi = [
   'function getAvailableBalance(uint256 projectId) external view returns (uint256)',
 ];
 
+// DisputeDAO contract ABI — events + view functions the pendingTx handlers need
+const disputeDAOAbi = [
+  'function getDisputeCore(uint256) view returns (uint256, address, address, address, uint8, bool, bool, uint256)',
+  'function getDisputeTimeline(uint256) view returns (string, string, uint256, uint256, uint256)',
+  'function getDisputeVoting(uint256) view returns (uint256, uint256, uint256, uint256)',
+  'function quorumNumerator() view returns (uint256)',
+  'event DisputeCreated(uint256 indexed disputeId, uint256 indexed projectId, address indexed initiator)',
+  'event EvidenceSubmitted(uint256 indexed disputeId, address indexed party, string evidenceURI)',
+  'event VotingStarted(uint256 indexed disputeId, uint256 votingDeadline, uint256 votingSnapshot)',
+  'event VoteCast(uint256 indexed disputeId, address indexed voter, bool supportClient, uint256 weight)',
+  'event DisputeResolved(uint256 indexed disputeId, bool clientWon, uint256 clientShare, uint256 developerShare)',
+  'event DisputeResolvedByOwner(uint256 indexed disputeId, bool clientWon)',
+];
+
 // Create contract instances with signer
 const wallet = new ethers.Wallet(process.env.PRIVATE_KEY || '', provider);
 const projectManagerContract = new ethers.Contract(projectManagerAddress, projectManagerAbi, wallet);
 const escrowVaultContract = new ethers.Contract(escrowVaultAddress, escrowVaultAbi, wallet);
+const disputeDAOContract = new ethers.Contract(disputeDAOAddress, disputeDAOAbi, provider);
+
+const contracts = {
+  projectManager: projectManagerContract,
+  disputeDAO: disputeDAOContract,
+};
 
 // Initialize routes with dependencies
 initializeProjects(db, projectManagerContract);
@@ -88,7 +114,7 @@ initializeMilestones(db, projectManagerContract, escrowVaultContract);
 initializeClients(db);
 initializeEscrow(db, escrowVaultContract, projectManagerContract);
 initializeAdmin(projectManagerContract);
-initializeTransactions(provider, projectManagerContract);
+initializeTransactions(provider, contracts);
 
 // Middleware
 app.use(cors({
@@ -144,12 +170,21 @@ app.listen(PORT, async () => {
   console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`✓ CORS enabled for: ${process.env.ALLOWED_ORIGINS || 'http://localhost:3000'}`);
 
-  // Start pending transaction poller
+  // Start pending transaction poller (fast-path for fresh user-initiated tx)
   try {
-    startPendingTransactionPoller(provider, projectManagerContract);
+    startPendingTransactionPoller(provider, contracts);
     console.log('✓ Pending transaction poller started');
   } catch (error) {
     console.error('Failed to start pending transaction poller:', error);
+  }
+
+  // Start chain reconciler (catches events the poller may have missed —
+  // direct contract calls, downtime > 1h timeout, restored backups, etc.)
+  try {
+    await startChainReconciler(provider, contracts);
+    console.log('✓ Chain reconciler started');
+  } catch (error) {
+    console.error('Failed to start chain reconciler:', error);
   }
 });
 
