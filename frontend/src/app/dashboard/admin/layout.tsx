@@ -4,22 +4,24 @@ import { useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import DashboardShell, { Icons } from '@/components/dashboard/DashboardShell';
+import { isAdminAddress } from '@/lib/auth';
 
 export default function AdminDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const router = useRouter();
+  const isAdmin = isAdminAddress(address);
 
   useEffect(() => {
-    if (!isConnected) {
+    if (!isConnected || !isAdmin) {
       router.push('/');
     }
-  }, [isConnected, router]);
+  }, [isConnected, isAdmin, router]);
 
-  if (!isConnected) {
+  if (!isConnected || !isAdmin) {
     return null;
   }
 

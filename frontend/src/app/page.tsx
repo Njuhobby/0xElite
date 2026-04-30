@@ -5,6 +5,7 @@ import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
+import { isAdminAddress } from '@/lib/auth';
 
 export default function Home() {
   const { address, isConnected } = useAccount();
@@ -18,12 +19,7 @@ export default function Home() {
       setCheckingDeveloper(true);
       try {
         // Check admin status first (admin dashboard takes highest priority)
-        const adminAddresses = (process.env.NEXT_PUBLIC_ADMIN_ADDRESSES || '')
-          .split(',')
-          .map((a) => a.trim().toLowerCase())
-          .filter((a) => a.length > 0);
-
-        if (adminAddresses.includes(address.toLowerCase())) {
+        if (isAdminAddress(address)) {
           router.push('/dashboard/admin');
           return;
         }

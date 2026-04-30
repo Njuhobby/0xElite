@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
+import { isAdminAddress } from '@/lib/auth';
 
 interface StakedDeveloper {
   walletAddress: string;
@@ -43,12 +44,7 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  const adminAddresses = (process.env.NEXT_PUBLIC_ADMIN_ADDRESSES || '')
-    .split(',')
-    .map((a) => a.trim().toLowerCase())
-    .filter((a) => a.length > 0);
-
-  const isAdmin = address && adminAddresses.includes(address.toLowerCase());
+  const isAdmin = isAdminAddress(address);
 
   const fetchDevelopers = useCallback(async (page = 1) => {
     try {
