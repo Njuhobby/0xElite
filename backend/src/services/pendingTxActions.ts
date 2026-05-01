@@ -4,6 +4,7 @@ import { pool } from '../config/database';
 import { logger } from '../utils/logger';
 import { assignDeveloperToProject } from './matchingAlgorithm';
 import { createNotification } from './notificationService';
+import VotingPowerSync from './votingPowerSync';
 
 export interface PendingTxRow {
   action: string;
@@ -14,13 +15,16 @@ export interface PendingTxRow {
 }
 
 /**
- * Bag of on-chain contracts the action handlers can parse events from
- * or call view functions on. Add a new field when a new contract needs
- * its events interpreted by the pendingTx pipeline.
+ * Bag of on-chain contracts and services the action handlers need.
+ * Contracts: parsed for events / called for view functions.
+ * Services: invoked for cross-cutting work (e.g. minting xELITE to keep
+ * voting power in sync with off-chain reputation).
+ * Add a new field when a new dependency is introduced.
  */
 export interface Contracts {
   projectManager: ethers.Contract;
   disputeDAO: ethers.Contract;
+  votingPowerSync: VotingPowerSync;
 }
 
 export interface ActionResult {
@@ -60,7 +64,13 @@ export async function processCompletedAction(
       result = await handleStake(client, row);
       break;
     case 'approve_milestone':
-      result = await handleApproveMilestone(client, row);
+      result = await handleApproveMilestone(
+        client,
+        row,
+        provider,
+        contracts.projectManager,
+        contracts.votingPowerSync
+      );
       break;
     case 'create_dispute':
       result = await handleCreateDispute(client, row, provider, contracts.disputeDAO);
@@ -193,24 +203,117 @@ async function handleStake(client: PoolClient, row: PendingTxRow): Promise<Actio
   return { action: 'stake' };
 }
 
-async function handleApproveMilestone(client: PoolClient, row: PendingTxRow): Promise<ActionResult> {
-  const milestoneIndex = row.metadata?.milestoneIndex;
-  if (milestoneIndex == null) {
-    logger.error('handleApproveMilestone: missing milestoneIndex in metadata', { txHash: row.tx_hash });
+async function handleApproveMilestone(
+  client: PoolClient,
+  row: PendingTxRow,
+  provider: ethers.JsonRpcProvider,
+  projectManagerContract: ethers.Contract,
+  votingPowerSync: VotingPowerSync
+): Promise<ActionResult> {
+  // Parse the on-chain MilestoneApproved event for the authoritative payment
+  // split. The contract atomically released funds; we mirror those numbers
+  // into milestones.payment_amount / platform_fee and credit the developer's
+  // total_earned (which feeds voting_power via DB trigger).
+  const receipt = await provider.getTransactionReceipt(row.tx_hash);
+  if (!receipt) {
+    logger.error('handleApproveMilestone: receipt not found', { txHash: row.tx_hash });
     return { action: 'approve_milestone' };
   }
 
-  const updateResult = await client.query(
-    `UPDATE milestones SET status = 'completed', completed_at = NOW(), updated_at = NOW()
-     WHERE project_id = $1 AND on_chain_index = $2 AND status != 'completed'`,
-    [row.entity_id, milestoneIndex]
-  );
+  const parsed = findEvent(receipt, projectManagerContract, 'MilestoneApproved');
+  // Fall back to metadata.milestoneIndex if the event can't be parsed (e.g.
+  // ABI mismatch); we still want the status flip to land.
+  const milestoneIndex =
+    parsed != null
+      ? Number(parsed.args.milestoneIndex)
+      : (row.metadata?.milestoneIndex as number | undefined);
+  if (milestoneIndex == null) {
+    logger.error('handleApproveMilestone: missing milestoneIndex', { txHash: row.tx_hash });
+    return { action: 'approve_milestone' };
+  }
+
+  const developerPayment = parsed != null ? Number(parsed.args.developerPayment) / 1e6 : null;
+  const platformFee = parsed != null ? Number(parsed.args.platformFee) / 1e6 : null;
+
+  // Update the milestone — status + payment fields if available.
+  if (developerPayment != null && platformFee != null) {
+    await client.query(
+      `UPDATE milestones
+          SET status = 'completed',
+              completed_at = NOW(),
+              payment_amount = $3,
+              platform_fee  = $4,
+              payment_tx_hash = $5,
+              paid_at = NOW(),
+              updated_at = NOW()
+        WHERE project_id = $1
+          AND on_chain_index = $2
+          AND status != 'completed'`,
+      [row.entity_id, milestoneIndex, developerPayment, platformFee, row.tx_hash]
+    );
+  } else {
+    await client.query(
+      `UPDATE milestones
+          SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+        WHERE project_id = $1
+          AND on_chain_index = $2
+          AND status != 'completed'`,
+      [row.entity_id, milestoneIndex]
+    );
+  }
+
+  // Credit the developer with what they were paid. The DB trigger on
+  // developers (recalculate_voting_power) will recompute voting_power.
+  let developerAddress: string | null = null;
+  if (developerPayment != null && developerPayment > 0) {
+    const projectResult = await client.query<{ assigned_developer: string | null }>(
+      'SELECT assigned_developer FROM projects WHERE id = $1',
+      [row.entity_id]
+    );
+    developerAddress = projectResult.rows[0]?.assigned_developer ?? null;
+    if (developerAddress) {
+      await client.query(
+        `UPDATE developers
+            SET total_earned = total_earned + $1,
+                updated_at = NOW()
+          WHERE wallet_address = $2`,
+        [developerPayment, developerAddress]
+      );
+    } else {
+      logger.warn('handleApproveMilestone: project missing assigned_developer', {
+        projectId: row.entity_id,
+      });
+    }
+  }
+
   logger.info('handleApproveMilestone: milestone approved', {
     projectId: row.entity_id,
     milestoneIndex,
-    rowsAffected: updateResult.rowCount,
+    developerPayment,
+    platformFee,
+    developerAddress,
   });
-  return { action: 'approve_milestone' };
+
+  if (!developerAddress) {
+    return { action: 'approve_milestone' };
+  }
+  // Push the new voting_power on-chain so the developer's xELITE balance
+  // reflects their reputation. Failures are logged but not retried — the
+  // next approval / review will reconcile.
+  const devForSync = developerAddress;
+  return {
+    action: 'approve_milestone',
+    postCommit: async () => {
+      try {
+        await votingPowerSync.syncDeveloper(devForSync);
+      } catch (err) {
+        logger.error('handleApproveMilestone: votingPowerSync failed', {
+          developerAddress: devForSync,
+          error: err,
+        });
+      }
+    },
+  };
 }
 
 // =============================================================================

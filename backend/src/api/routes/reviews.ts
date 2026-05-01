@@ -2,9 +2,20 @@ import { Router } from 'express';
 import { pool } from '../../config/database';
 import { verifySignature } from '../../utils/signature';
 import { isValidAddress } from '../../utils/validation';
+import { logger } from '../../utils/logger';
 import type { Review, CreateReviewInput, UpdateReviewInput } from '../../types/review';
+import VotingPowerSync from '../../services/votingPowerSync';
 
 const router = Router();
+
+// Lazily-injected so reviews can trigger an xELITE re-mint when a developer's
+// average_rating changes via DB trigger. Reviews aren't part of the on-chain
+// pending-tx pipeline, so we plug the service in directly via initialize().
+let votingPowerSync: VotingPowerSync | null = null;
+
+export function initialize(vps: VotingPowerSync) {
+  votingPowerSync = vps;
+}
 
 const MAX_COMMENT_LENGTH = 1000;
 const EDIT_WINDOW_DAYS = 7;
@@ -112,6 +123,17 @@ router.post('/', async (req, res) => {
       );
 
       const review = result.rows[0]!;
+
+      // If the reviewee is a developer, the triggers just changed their
+      // average_rating → voting_power. Push the new value on-chain so xELITE
+      // balance reflects current reputation. Fire-and-forget — failure here
+      // shouldn't block the response (the next mint/burn event will catch up).
+      if (reviewerType === 'client' && votingPowerSync && revieweeAddress) {
+        const developerAddress = revieweeAddress;
+        votingPowerSync.syncDeveloper(developerAddress).catch((err) => {
+          logger.error('reviews: votingPowerSync failed', { developerAddress, error: err });
+        });
+      }
 
       return res.status(201).json({
         id: review.id,

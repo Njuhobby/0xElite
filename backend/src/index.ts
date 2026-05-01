@@ -9,7 +9,7 @@ import projectsRouter, { initialize as initializeProjects } from './api/routes/p
 import milestonesRouter, { initialize as initializeMilestones } from './api/routes/milestones';
 import clientsRouter, { initialize as initializeClients } from './api/routes/clients';
 import escrowRouter, { initialize as initializeEscrow } from './api/routes/escrow';
-import reviewsRouter from './api/routes/reviews';
+import reviewsRouter, { initialize as initializeReviews } from './api/routes/reviews';
 import disputesRouter from './api/routes/disputes';
 import adminRouter, { initialize as initializeAdmin } from './api/routes/admin';
 import notificationsRouter from './api/routes/notifications';
@@ -17,6 +17,7 @@ import transactionsRouter, { initialize as initializeTransactions } from './api/
 import { pool } from './config/database';
 import { startPendingTransactionPoller } from './services/pendingTransactionPoller';
 import { startChainReconciler } from './services/chainReconciler';
+import VotingPowerSync from './services/votingPowerSync';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -42,6 +43,11 @@ if (!escrowVaultAddress) {
 
 if (!disputeDAOAddress) {
   throw new Error('DISPUTE_DAO_ADDRESS not configured in .env');
+}
+
+const eliteTokenAddress = process.env.ELITE_TOKEN_ADDRESS;
+if (!eliteTokenAddress) {
+  throw new Error('ELITE_TOKEN_ADDRESS not configured in .env');
 }
 
 // ProjectManager contract ABI (V2 — includes milestones)
@@ -103,9 +109,16 @@ const projectManagerContract = new ethers.Contract(projectManagerAddress, projec
 const escrowVaultContract = new ethers.Contract(escrowVaultAddress, escrowVaultAbi, wallet);
 const disputeDAOContract = new ethers.Contract(disputeDAOAddress, disputeDAOAbi, provider);
 
+// VotingPowerSync mints/burns xELITE on-chain to keep balances in line with
+// developers.voting_power (which the DB trigger derives from total_earned ×
+// average_rating). Wired into the pending-tx pipeline via Contracts bag and
+// invoked from handleApproveMilestone postCommit + reviews route.
+const votingPowerSync = new VotingPowerSync(db, eliteTokenAddress, wallet);
+
 const contracts = {
   projectManager: projectManagerContract,
   disputeDAO: disputeDAOContract,
+  votingPowerSync,
 };
 
 // Initialize routes with dependencies
@@ -115,6 +128,7 @@ initializeClients(db);
 initializeEscrow(db, escrowVaultContract, projectManagerContract);
 initializeAdmin(projectManagerContract);
 initializeTransactions(provider, contracts);
+initializeReviews(votingPowerSync);
 
 // Middleware
 app.use(cors({

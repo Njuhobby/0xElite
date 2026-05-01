@@ -65,7 +65,7 @@ describe('handleCreateDispute', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'DisputeCreated',
@@ -134,7 +134,7 @@ describe('handleCreateDispute', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'DisputeCreated',
@@ -168,7 +168,7 @@ describe('handleSubmitEvidence', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'EvidenceSubmitted',
@@ -195,7 +195,7 @@ describe('handleSubmitEvidence', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'EvidenceSubmitted',
@@ -225,7 +225,7 @@ describe('handleStartVoting', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     const deadline = Math.floor(Date.now() / 1000) + 5 * 86400;
     const snapshot = Math.floor(Date.now() / 1000);
@@ -275,7 +275,7 @@ describe('handleCastVote', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'VoteCast',
@@ -306,7 +306,7 @@ describe('handleCastVote', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'VoteCast',
@@ -334,7 +334,7 @@ describe('handleExecuteResolution', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'DisputeResolved',
@@ -377,7 +377,7 @@ describe('handleOwnerResolve', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'DisputeResolvedByOwner',
@@ -420,7 +420,7 @@ describe('handleOwnerResolve', () => {
     const pool = createMockPool();
     const disputeDAO = createMockDisputeDAOContract();
     const provider = makeProvider();
-    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any };
+    const contracts = { projectManager: {} as any, disputeDAO: disputeDAO as any, votingPowerSync: { syncDeveloper: jest.fn().mockResolvedValue(undefined) } as any };
 
     disputeDAO.interface.parseLog.mockReturnValueOnce({
       name: 'DisputeResolvedByOwner',

@@ -47,8 +47,10 @@ const STARTUP_FALLBACK_BLOCK = Number(process.env.RECONCILER_START_BLOCK ?? 0);
 // Event → handler binding
 // =============================================================================
 
+type ChainContractKey = 'projectManager' | 'disputeDAO';
+
 interface EventBinding {
-  contract: keyof Contracts;
+  contract: ChainContractKey;
   /** Action key understood by `processCompletedAction`'s switch. */
   action: string;
   entityType: string;
@@ -260,7 +262,7 @@ async function processOneEvent(
 
 async function reconcileRange(fromBlock: number, toBlock: number): Promise<void> {
   // Group event names by contract so we can issue one queryFilter per (contract, event).
-  const contractInstances: Record<keyof Contracts, ethers.Contract> = {
+  const contractInstances: Record<ChainContractKey, ethers.Contract> = {
     projectManager: contracts.projectManager,
     disputeDAO: contracts.disputeDAO,
   };
