@@ -15,7 +15,7 @@ import adminRouter, { initialize as initializeAdmin } from './api/routes/admin';
 import notificationsRouter from './api/routes/notifications';
 import transactionsRouter, { initialize as initializeTransactions } from './api/routes/transactions';
 import { pool } from './config/database';
-import { startPendingTransactionPoller } from './services/pendingTransactionPoller';
+import { startConsistencyScheduler } from './services/consistencyScheduler';
 import { startChainReconciler } from './services/chainReconciler';
 import VotingPowerSync from './services/votingPowerSync';
 
@@ -184,16 +184,20 @@ app.listen(PORT, async () => {
   console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`✓ CORS enabled for: ${process.env.ALLOWED_ORIGINS || 'http://localhost:3000'}`);
 
-  // Start pending transaction poller (fast-path for fresh user-initiated tx)
+  // Start consistency scheduler — backend-driven reconciliation. Drains
+  // pending_transactions (fast-path for user-initiated tx) and sweeps
+  // voting_power drift (xELITE balance vs developers.voting_power) on
+  // separate cadences but in the same scheduler.
   try {
-    startPendingTransactionPoller(provider, contracts);
-    console.log('✓ Pending transaction poller started');
+    startConsistencyScheduler(provider, contracts, votingPowerSync);
+    console.log('✓ Consistency scheduler started');
   } catch (error) {
-    console.error('Failed to start pending transaction poller:', error);
+    console.error('Failed to start consistency scheduler:', error);
   }
 
-  // Start chain reconciler (catches events the poller may have missed —
-  // direct contract calls, downtime > 1h timeout, restored backups, etc.)
+  // Start chain reconciler (safety net for events that bypass the
+  // pending_transactions table — direct contract calls, frontend crashed
+  // before recording the row, restored backups, etc.)
   try {
     await startChainReconciler(provider, contracts);
     console.log('✓ Chain reconciler started');
