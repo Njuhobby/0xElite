@@ -6,10 +6,11 @@ import Link from 'next/link';
 
 interface Project {
   id: string;
+  projectNumber: number;
   title: string;
-  description: string;
-  budget: number;
-  status: 'open' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+  requiredSkills: string[];
+  totalBudget: string;
+  status: string;
   createdAt: string;
 }
 
@@ -19,16 +20,28 @@ export default function DeveloperProjectsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!address) {
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
     fetchProjects();
   }, [address]);
 
   const fetchProjects = async () => {
+    if (!address) return;
     try {
       setLoading(true);
-      // TODO: Implement API endpoint to fetch developer's projects
-      setProjects([]);
+      const params = new URLSearchParams({ developerAddress: address, limit: '50' });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/projects?${params.toString()}`
+      );
+      if (!response.ok) throw new Error('Failed to fetch projects');
+      const data = await response.json();
+      setProjects(data.projects);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
+      setProjects([]);
     } finally {
       setLoading(false);
     }
@@ -63,15 +76,10 @@ export default function DeveloperProjectsPage() {
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No Projects Yet</h3>
-          <p className="text-gray-500 text-sm mb-6">
-            You haven&apos;t been assigned to any projects yet. Check back later or browse available projects.
+          <p className="text-gray-500 text-sm">
+            You haven&apos;t been assigned to any projects yet. Projects are matched
+            automatically based on your skills — check back later.
           </p>
-          <Link
-            href="/projects"
-            className="inline-flex items-center px-5 py-2.5 bg-violet-600 rounded-lg text-white text-sm font-semibold hover:bg-violet-700 transition-colors"
-          >
-            Browse Projects
-          </Link>
         </div>
       ) : (
         <div className="space-y-3">
@@ -82,8 +90,21 @@ export default function DeveloperProjectsPage() {
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-base font-semibold text-gray-900">{project.title}</h3>
-                  <p className="text-gray-500 text-sm mt-0.5">{project.description}</p>
+                  <h3 className="text-base font-semibold text-gray-900">
+                    #{project.projectNumber} {project.title}
+                  </h3>
+                  {project.requiredSkills.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {project.requiredSkills.map((skill) => (
+                        <span
+                          key={skill}
+                          className="px-2 py-0.5 bg-violet-50 text-violet-700 rounded text-xs font-medium"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusConfig[project.status]?.color || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                   {statusConfig[project.status]?.label || project.status}
@@ -92,10 +113,10 @@ export default function DeveloperProjectsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-400">Budget</p>
-                  <p className="text-gray-900 font-semibold text-sm">${project.budget} USDC</p>
+                  <p className="text-gray-900 font-semibold text-sm">${project.totalBudget} USDC</p>
                 </div>
                 <Link
-                  href={`/projects/${project.id}`}
+                  href={`/dashboard/developer/projects/${project.id}`}
                   className="text-sm text-violet-600 hover:text-violet-700 font-medium"
                 >
                   View Details &rarr;
