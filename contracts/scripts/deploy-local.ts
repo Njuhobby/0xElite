@@ -1,14 +1,19 @@
 import { ethers, upgrades } from "hardhat";
+import { seedTestData } from "./seed-test-data";
 
 /**
  * Local deployment script for Hardhat node (localhost:8545)
  * - Deploys MockUSDC and mints to test accounts
  * - Deploys all platform contracts
+ * - Seeds an active developer + client + assigned project so disputes/etc.
+ *   can be tested without manually replaying the onboarding flow each time.
+ *   Set SKIP_SEED=true to deploy contracts only.
  * - Prints env config for backend & frontend
  *
  * Usage:
  *   Terminal 1: npx hardhat node
- *   Terminal 2: npx hardhat run scripts/deploy-local.ts --network localhost
+ *   Terminal 2: cd backend && npm run reset-dev   # fresh DB
+ *   Terminal 3: npx hardhat run scripts/deploy-local.ts --network localhost
  */
 async function main() {
   const signers = await ethers.getSigners();
@@ -163,6 +168,19 @@ async function main() {
   console.log(`RPC URL:       http://127.0.0.1:8545`);
   console.log(`Chain ID:      31337`);
   console.log(`Currency:      ETH`);
+
+  if (process.env.SKIP_SEED === "true") {
+    console.log("\nSKIP_SEED=true — skipping test-data seeding.");
+    return;
+  }
+
+  await seedTestData({
+    usdcAddress,
+    stakeVaultAddress,
+    escrowVaultAddress,
+    projectManagerAddress,
+    requiredStake: REQUIRED_STAKE,
+  });
 }
 
 main()
