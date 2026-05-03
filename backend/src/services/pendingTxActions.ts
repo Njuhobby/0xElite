@@ -286,12 +286,31 @@ async function handleApproveMilestone(
     }
   }
 
+  // Flip the project to 'completed' once every milestone is done. The chain
+  // doesn't carry an explicit "project finished" event — it's an emergent
+  // state — so we derive it here. Without this the Reviews UI never opens
+  // (gated on status='completed'), so the dev never accrues voting power.
+  const remaining = await client.query<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM milestones
+      WHERE project_id = $1 AND status != 'completed'`,
+    [row.entity_id]
+  );
+  if (remaining.rows[0]!.n === 0) {
+    await client.query(
+      `UPDATE projects
+          SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND status = 'active'`,
+      [row.entity_id]
+    );
+  }
+
   logger.info('handleApproveMilestone: milestone approved', {
     projectId: row.entity_id,
     milestoneIndex,
     developerPayment,
     platformFee,
     developerAddress,
+    projectCompleted: remaining.rows[0]!.n === 0,
   });
 
   if (!developerAddress) {
