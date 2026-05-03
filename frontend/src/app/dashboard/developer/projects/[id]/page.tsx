@@ -6,7 +6,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import MilestoneCard from '@/components/project/MilestoneCard';
 import RaiseDisputeModal from '@/components/disputes/RaiseDisputeModal';
-import SubmitReviewModal from '@/components/reviews/SubmitReviewModal';
 
 interface Milestone {
   id: string;
@@ -77,8 +76,6 @@ export default function DeveloperProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showDisputeModal, setShowDisputeModal] = useState(false);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [hasReviewed, setHasReviewed] = useState(false);
 
   useEffect(() => {
     if (address && id) {
@@ -122,7 +119,6 @@ export default function DeveloperProjectDetailPage() {
         flat.push({ ...data.reviews.developerReview, reviewerType: 'developer' });
       }
       setReviews(flat);
-      setHasReviewed(flat.some((r) => r.reviewerAddress.toLowerCase() === address?.toLowerCase()));
     } catch {
       // Non-critical
     }
@@ -285,55 +281,29 @@ export default function DeveloperProjectDetailPage() {
         </div>
       </div>
 
-      {/* Reviews Section */}
-      {project.status === 'completed' && (
+      {/* Reviews Section — read-only on the dev side. The developer's
+          reputation is built by client reviews; we don't ask devs to review
+          clients in MVP. */}
+      {project.status === 'completed' && reviews.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Reviews</h2>
-            {!hasReviewed && isDeveloper && (
-              <button
-                onClick={() => setShowReviewModal(true)}
-                className="px-4 py-2 bg-violet-600 rounded-lg text-white text-sm font-medium hover:bg-violet-700 transition-colors"
-              >
-                Submit Review
-              </button>
-            )}
-          </div>
-
-          {reviews.length === 0 ? (
-            <p className="text-gray-400 text-sm">No reviews yet for this project.</p>
-          ) : (
-            <div className="space-y-3">
-              {reviews.map((review) => (
-                <div key={review.id} className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-500 text-sm">
-                      {review.reviewerType === 'client' ? 'Client' : 'Developer'} &middot;{' '}
-                      {review.reviewerAddress.slice(0, 6)}...{review.reviewerAddress.slice(-4)}
-                    </span>
-                    <span className="text-amber-500 font-medium">
-                      {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
-                    </span>
-                  </div>
-                  {review.comment && <p className="text-gray-600 text-sm">{review.comment}</p>}
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Reviews</h2>
+          <div className="space-y-3">
+            {reviews.map((review) => (
+              <div key={review.id} className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-gray-500 text-sm">
+                    {review.reviewerType === 'client' ? 'Client' : 'Developer'} &middot;{' '}
+                    {review.reviewerAddress.slice(0, 6)}...{review.reviewerAddress.slice(-4)}
+                  </span>
+                  <span className="text-amber-500 font-medium">
+                    {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
+                {review.comment && <p className="text-gray-600 text-sm">{review.comment}</p>}
+              </div>
+            ))}
+          </div>
         </div>
-      )}
-
-      {/* Submit Review Modal */}
-      {showReviewModal && (
-        <SubmitReviewModal
-          projectId={project.id}
-          projectTitle={project.title}
-          onClose={() => setShowReviewModal(false)}
-          onSuccess={() => {
-            setShowReviewModal(false);
-            fetchReviews();
-          }}
-        />
       )}
 
       {/* Raise Dispute Modal */}

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import EditClientProfileModal from '@/components/client/EditClientProfileModal';
-import ReviewList from '@/components/reviews/ReviewList';
 import { useClientStatus } from './ClientContext';
 
 interface ClientProfile {
@@ -291,13 +290,6 @@ export default function ClientDashboardPage() {
           <p className="text-2xl font-bold text-gray-900">{client?.createdAt ? new Date(client.createdAt).toLocaleDateString() : '-'}</p>
         </div>
       </div>
-
-      {/* Reviews Section */}
-      {address && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-          <ReviewList address={address} type="client" />
-        </div>
-      )}
 
       {/* Edit Modal */}
       {showEditModal && client && (
