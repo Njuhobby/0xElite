@@ -112,8 +112,17 @@ export default function DeveloperProjectDetailPage() {
       );
       if (!response.ok) return;
       const data = await response.json();
-      setReviews(data.reviews || []);
-      setHasReviewed(data.reviews?.some((r: ReviewData) => r.reviewerAddress.toLowerCase() === address?.toLowerCase()));
+      // API shape: { reviews: { clientReview, developerReview } } — flatten
+      // into a tagged array so the UI can render and dedupe naturally.
+      const flat: ReviewData[] = [];
+      if (data.reviews?.clientReview) {
+        flat.push({ ...data.reviews.clientReview, reviewerType: 'client' });
+      }
+      if (data.reviews?.developerReview) {
+        flat.push({ ...data.reviews.developerReview, reviewerType: 'developer' });
+      }
+      setReviews(flat);
+      setHasReviewed(flat.some((r) => r.reviewerAddress.toLowerCase() === address?.toLowerCase()));
     } catch {
       // Non-critical
     }
