@@ -576,40 +576,63 @@ async function mirrorCompletedMilestonesInDb(
     [totalDeveloperPayment, projectId]
   );
 
-  // Mirror handleApproveMilestone's project-completion flip + counter bumps.
+  // Mirror handleApproveMilestone's project-completion flip.
   const completion = await pool.query<{
     client_address: string;
     assigned_developer: string | null;
-    total_budget: string;
   }>(
     `UPDATE projects
         SET status = 'completed', completed_at = NOW(), updated_at = NOW()
       WHERE id = $1 AND status = 'active'
-      RETURNING client_address, assigned_developer, total_budget`,
+      RETURNING client_address, assigned_developer`,
     [projectId]
   );
-  if (completion.rowCount && completion.rowCount > 0) {
-    const { client_address, assigned_developer, total_budget } = completion.rows[0]!;
-    if (assigned_developer) {
-      await pool.query(
-        `UPDATE developers
-            SET projects_completed = projects_completed + 1,
-                availability = 'available',
-                current_project_id = NULL,
-                updated_at = NOW()
-          WHERE wallet_address = $1`,
-        [assigned_developer]
-      );
-    }
+
+  // Recompute aggregate counters from truth instead of incrementing — this
+  // way re-running the seed without resetting DB doesn't double-count, and
+  // doesn't silently skip the bump if a previous run flipped the status but
+  // didn't update counters (which is what happens when the seed is re-run
+  // across upgrades).
+  const project = completion.rows[0];
+  const projectRow =
+    project ??
+    (await pool.query<{ client_address: string; assigned_developer: string | null }>(
+      `SELECT client_address, assigned_developer FROM projects WHERE id = $1`,
+      [projectId]
+    )).rows[0]!;
+
+  if (projectRow.assigned_developer) {
     await pool.query(
-      `UPDATE clients
-          SET projects_completed = projects_completed + 1,
-              total_spent = total_spent + $1::decimal,
+      `UPDATE developers d
+          SET projects_completed = (
+                SELECT COUNT(*) FROM projects p
+                 WHERE p.assigned_developer = d.wallet_address
+                   AND p.status = 'completed'
+              ),
+              availability = 'available',
+              current_project_id = NULL,
               updated_at = NOW()
-        WHERE wallet_address = $2`,
-      [total_budget, client_address]
+        WHERE d.wallet_address = $1`,
+      [projectRow.assigned_developer]
     );
   }
+  await pool.query(
+    `UPDATE clients c
+        SET projects_completed = (
+              SELECT COUNT(*) FROM projects p
+               WHERE p.client_address = c.wallet_address
+                 AND p.status = 'completed'
+            ),
+            total_spent = (
+              SELECT COALESCE(SUM(total_budget), 0) FROM projects p
+               WHERE p.client_address = c.wallet_address
+                 AND p.status = 'completed'
+            ),
+            updated_at = NOW()
+      WHERE c.wallet_address = $1`,
+    [projectRow.client_address]
+  );
+
   console.log(`  ✓ DB milestones marked completed; project completed; dev credited ${totalDeveloperPayment} USDC`);
 }
 
