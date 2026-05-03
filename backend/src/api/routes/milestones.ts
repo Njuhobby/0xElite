@@ -143,7 +143,7 @@ router.post('/:projectId/milestones', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { address, message, signature, status, deliverableUrls, reviewNotes } = req.body;
+    const { address, message, signature, status, reviewNotes } = req.body;
 
     // Validation
     if (!address || !message || !signature || !status) {
@@ -192,14 +192,17 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Validate status transitions
+    // Validate status transitions. Developer doesn't have a separate "start"
+    // action — they go directly from pending → pending_review when notifying
+    // the client that work is complete. (in_progress remains a legal source
+    // state for legacy rows, but nothing new transitions into it.)
     const currentStatus = milestone.status;
     const validTransitions: Record<string, string[]> = {
-      pending: ['in_progress'],
+      pending: ['pending_review'],
       in_progress: ['pending_review', 'disputed'],
-      pending_review: ['completed', 'in_progress', 'disputed'],
+      pending_review: ['completed', 'pending', 'disputed'],
       completed: [],
-      disputed: ['in_progress'],
+      disputed: ['pending'],
     };
 
     if (!validTransitions[currentStatus]?.includes(status)) {
@@ -209,12 +212,12 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Developer can: pending → in_progress, in_progress → pending_review
-    // Client can: pending_review → completed, pending_review → in_progress
-    if (isDeveloper && !['in_progress', 'pending_review'].includes(status)) {
+    // Developer can only mark milestones as pending_review (notify complete).
+    // Client can approve (→ completed) or send back (→ pending) from pending_review.
+    if (isDeveloper && status !== 'pending_review') {
       return res.status(403).json({
         error: 'FORBIDDEN',
-        message: 'Developer can only mark milestones as in_progress or pending_review',
+        message: 'Developer can only mark milestones as pending_review',
       });
     }
 
@@ -233,27 +236,18 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Validate deliverable URLs for pending_review
-    if (status === 'pending_review' && (!deliverableUrls || deliverableUrls.length === 0)) {
-      return res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Deliverable URLs required when submitting for review',
-      });
-    }
-
     // Update milestone
     const updates: string[] = [`status = $1`];
     const values: any[] = [status];
     let paramCount = 2;
 
-    if (status === 'in_progress' && currentStatus === 'pending') {
-      updates.push(`started_at = NOW()`);
-    }
-
     if (status === 'pending_review') {
       updates.push(`submitted_at = NOW()`);
-      updates.push(`deliverable_urls = $${paramCount++}`);
-      values.push(JSON.stringify(deliverableUrls));
+      // Stamp started_at on the first dev-driven transition (we no longer
+      // have a separate "start" action so this is the closest signal).
+      if (!milestone.started_at) {
+        updates.push(`started_at = NOW()`);
+      }
     }
 
     // Handle milestone completion and payment release

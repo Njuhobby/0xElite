@@ -63,15 +63,16 @@ interface Props {
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   pending: {
-    label: 'Not Started',
+    label: 'Open',
     className: 'bg-gray-100 border-gray-200 text-gray-600',
   },
+  // Legacy: nothing transitions into in_progress anymore, kept for old rows.
   in_progress: {
-    label: 'In Progress',
-    className: 'bg-blue-50 border-blue-200 text-blue-700',
+    label: 'Open',
+    className: 'bg-gray-100 border-gray-200 text-gray-600',
   },
   pending_review: {
-    label: 'Pending Review',
+    label: 'Awaiting Approval',
     className: 'bg-amber-50 border-amber-200 text-amber-700',
   },
   completed: {
@@ -88,8 +89,6 @@ export default function MilestoneCard({ milestone, projectId, isClient, isDevelo
   const { address } = useAccount();
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState('');
-  const [showSubmitForm, setShowSubmitForm] = useState(false);
-  const [deliverableUrls, setDeliverableUrls] = useState<string[]>(['']);
   const [reviewNotes, setReviewNotes] = useState('');
 
   const { signMessageAsync } = useSignMessage();
@@ -171,14 +170,9 @@ Timestamp: ${timestamp}`;
         signature,
       };
 
-      // Developer starting work
-      if (milestone.status === 'pending' && isDeveloper) {
-        payload.status = 'in_progress';
-      }
-      // Developer submitting for review
-      else if (milestone.status === 'in_progress' && isDeveloper && showSubmitForm) {
+      // Developer notifying that the milestone is complete
+      if (isDeveloper && (milestone.status === 'pending' || milestone.status === 'in_progress')) {
         payload.status = 'pending_review';
-        payload.deliverableUrls = deliverableUrls.filter(url => url.trim());
       }
       // Client approving
       else if (milestone.status === 'pending_review' && isClient) {
@@ -204,8 +198,6 @@ Timestamp: ${timestamp}`;
         throw new Error(errorData.message || 'Failed to update milestone');
       }
 
-      setShowSubmitForm(false);
-      setDeliverableUrls(['']);
       setReviewNotes('');
       onUpdate();
     } catch (err) {
@@ -215,29 +207,11 @@ Timestamp: ${timestamp}`;
     }
   };
 
-  const handleStartWork = async () => {
+  const handleMarkComplete = async () => {
     setError('');
     setIsUpdating(true);
     try {
-      const message = generateMessage('Start work on');
-      const signature = await signMessageAsync({ message });
-      await updateMilestone(signature, message);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign message');
-      setIsUpdating(false);
-    }
-  };
-
-  const handleSubmitForReview = async () => {
-    if (deliverableUrls.filter(url => url.trim()).length === 0) {
-      setError('Please provide at least one deliverable URL');
-      return;
-    }
-
-    setError('');
-    setIsUpdating(true);
-    try {
-      const message = generateMessage('Submit milestone for review');
+      const message = generateMessage('Mark milestone as complete');
       const signature = await signMessageAsync({ message });
       await updateMilestone(signature, message);
     } catch (err) {
@@ -272,22 +246,6 @@ Timestamp: ${timestamp}`;
     }
   };
 
-  const addDeliverableUrl = () => {
-    setDeliverableUrls([...deliverableUrls, '']);
-  };
-
-  const updateDeliverableUrl = (index: number, value: string) => {
-    const updated = [...deliverableUrls];
-    updated[index] = value;
-    setDeliverableUrls(updated);
-  };
-
-  const removeDeliverableUrl = (index: number) => {
-    if (deliverableUrls.length > 1) {
-      setDeliverableUrls(deliverableUrls.filter((_, i) => i !== index));
-    }
-  };
-
   const config = statusConfig[milestone.status] || statusConfig.pending;
 
   return (
@@ -318,27 +276,6 @@ Timestamp: ${timestamp}`;
           ))}
         </ul>
       </div>
-
-      {/* Submitted Deliverables */}
-      {milestone.deliverableUrls && milestone.deliverableUrls.length > 0 && (
-        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-blue-700 font-medium text-sm mb-2">Submitted Deliverables:</p>
-          <ul className="space-y-1.5">
-            {milestone.deliverableUrls.map((url: string, index: number) => (
-              <li key={index}>
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-violet-600 hover:text-violet-700 text-sm break-all"
-                >
-                  {url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {/* Review Notes */}
       {milestone.reviewNotes && (
@@ -379,79 +316,17 @@ Timestamp: ${timestamp}`;
         </div>
       )}
 
-      {/* Developer Actions */}
-      {isDeveloper && (
-        <div>
-          {milestone.status === 'pending' && (
-            <button
-              onClick={handleStartWork}
-              disabled={isUpdating}
-              className="w-full py-2.5 bg-violet-600 rounded-lg text-white font-semibold text-sm hover:bg-violet-700 transition-colors disabled:opacity-50"
-            >
-              {isUpdating ? 'Starting...' : 'Start Working on This Milestone'}
-            </button>
-          )}
-
-          {milestone.status === 'in_progress' && !showSubmitForm && (
-            <button
-              onClick={() => setShowSubmitForm(true)}
-              className="w-full py-2.5 bg-violet-600 rounded-lg text-white font-semibold text-sm hover:bg-violet-700 transition-colors"
-            >
-              Submit for Review
-            </button>
-          )}
-
-          {showSubmitForm && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-gray-700 font-medium text-sm mb-2">Deliverable URLs</label>
-                {deliverableUrls.map((url, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-2">
-                    <input
-                      type="url"
-                      value={url}
-                      onChange={(e) => updateDeliverableUrl(index, e.target.value)}
-                      className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
-                      placeholder="https://github.com/user/repo/pull/123"
-                    />
-                    {deliverableUrls.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeDeliverableUrl(index)}
-                        className="text-red-500 hover:text-red-600 px-2"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={addDeliverableUrl}
-                  className="text-violet-600 hover:text-violet-700 font-medium text-sm"
-                >
-                  + Add URL
-                </button>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowSubmitForm(false)}
-                  className="flex-1 py-2.5 bg-gray-100 rounded-lg text-gray-700 font-semibold text-sm hover:bg-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSubmitForReview}
-                  disabled={isUpdating}
-                  className="flex-1 py-2.5 bg-violet-600 rounded-lg text-white font-semibold text-sm hover:bg-violet-700 transition-colors disabled:opacity-50"
-                >
-                  {isUpdating ? 'Submitting...' : 'Submit'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Developer Action — single click flips milestone to pending_review and
+          notifies the client. No deliverable URL capture here; that lives in
+          the upcoming client/dev communication module. */}
+      {isDeveloper && (milestone.status === 'pending' || milestone.status === 'in_progress') && (
+        <button
+          onClick={handleMarkComplete}
+          disabled={isUpdating}
+          className="w-full py-2.5 bg-violet-600 rounded-lg text-white font-semibold text-sm hover:bg-violet-700 transition-colors disabled:opacity-50"
+        >
+          {isUpdating ? 'Notifying...' : 'Mark as Complete'}
+        </button>
       )}
 
       {/* Client Actions */}
