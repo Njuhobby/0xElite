@@ -17,6 +17,7 @@ interface Developer {
   status: 'pending' | 'staked' | 'active' | 'rejected' | 'suspended';
   createdAt: string;
   updatedAt?: string;
+  projectsCompleted: number;
 }
 
 export default function DeveloperDashboardPage() {
@@ -224,7 +225,7 @@ export default function DeveloperDashboardPage() {
         </div>
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Projects Completed</p>
-          <p className="text-2xl font-bold text-gray-900">0</p>
+          <p className="text-2xl font-bold text-gray-900">{developer.projectsCompleted ?? 0}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Member Since</p>

@@ -172,6 +172,10 @@ router.get('/:address', async (req, res) => {
       totalUnlocked: developer.total_unlocked,
       remainingStake: Math.max(0, Number(developer.stake_amount || 0) - Number(developer.total_unlocked || 0)).toFixed(6),
       lastUnlockAt: developer.last_unlock_at,
+      projectsCompleted: (developer as any).projects_completed ?? 0,
+      totalEarned: (developer as any).total_earned ?? '0',
+      averageRating: (developer as any).average_rating ?? null,
+      votingPower: (developer as any).voting_power ?? '0',
     };
 
     // Include email and updatedAt for owner
