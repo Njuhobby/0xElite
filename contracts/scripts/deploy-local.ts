@@ -179,7 +179,9 @@ async function main() {
     stakeVaultAddress,
     escrowVaultAddress,
     projectManagerAddress,
+    eliteTokenAddress,
     requiredStake: REQUIRED_STAKE,
+    platformFeeBps: PLATFORM_FEE_BPS,
   });
 }
 
