@@ -576,14 +576,40 @@ async function mirrorCompletedMilestonesInDb(
     [totalDeveloperPayment, projectId]
   );
 
-  // Mirror handleApproveMilestone's project-completion flip — UI gates the
-  // Reviews section on status='completed'.
-  await pool.query(
+  // Mirror handleApproveMilestone's project-completion flip + counter bumps.
+  const completion = await pool.query<{
+    client_address: string;
+    assigned_developer: string | null;
+    total_budget: string;
+  }>(
     `UPDATE projects
         SET status = 'completed', completed_at = NOW(), updated_at = NOW()
-      WHERE id = $1 AND status = 'active'`,
+      WHERE id = $1 AND status = 'active'
+      RETURNING client_address, assigned_developer, total_budget`,
     [projectId]
   );
+  if (completion.rowCount && completion.rowCount > 0) {
+    const { client_address, assigned_developer, total_budget } = completion.rows[0]!;
+    if (assigned_developer) {
+      await pool.query(
+        `UPDATE developers
+            SET projects_completed = projects_completed + 1,
+                availability = 'available',
+                current_project_id = NULL,
+                updated_at = NOW()
+          WHERE wallet_address = $1`,
+        [assigned_developer]
+      );
+    }
+    await pool.query(
+      `UPDATE clients
+          SET projects_completed = projects_completed + 1,
+              total_spent = total_spent + $1::decimal,
+              updated_at = NOW()
+        WHERE wallet_address = $2`,
+      [total_budget, client_address]
+    );
+  }
   console.log(`  ✓ DB milestones marked completed; project completed; dev credited ${totalDeveloperPayment} USDC`);
 }
 

@@ -296,12 +296,44 @@ async function handleApproveMilestone(
     [row.entity_id]
   );
   if (remaining.rows[0]!.n === 0) {
-    await client.query(
+    const projectUpdate = await client.query<{
+      client_address: string;
+      assigned_developer: string | null;
+      total_budget: string;
+    }>(
       `UPDATE projects
           SET status = 'completed', completed_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND status = 'active'`,
+        WHERE id = $1 AND status = 'active'
+        RETURNING client_address, assigned_developer, total_budget`,
       [row.entity_id]
     );
+
+    // Bump aggregate counters that the legacy /api/milestones path also bumps
+    // (developers.projects_completed + availability, clients.projects_completed
+    // + total_spent). The chain-driven path used to skip these so dashboards
+    // showed the right paid amount but a completed-count of 0.
+    if (projectUpdate.rowCount && projectUpdate.rowCount > 0) {
+      const { client_address, assigned_developer, total_budget } = projectUpdate.rows[0]!;
+      if (assigned_developer) {
+        await client.query(
+          `UPDATE developers
+              SET projects_completed = projects_completed + 1,
+                  availability = 'available',
+                  current_project_id = NULL,
+                  updated_at = NOW()
+            WHERE wallet_address = $1`,
+          [assigned_developer]
+        );
+      }
+      await client.query(
+        `UPDATE clients
+            SET projects_completed = projects_completed + 1,
+                total_spent = total_spent + $1::decimal,
+                updated_at = NOW()
+          WHERE wallet_address = $2`,
+        [total_budget, client_address]
+      );
+    }
   }
 
   logger.info('handleApproveMilestone: milestone approved', {
