@@ -89,12 +89,15 @@ const escrowVaultAbi = [
   'function getAvailableBalance(uint256 projectId) external view returns (uint256)',
 ];
 
-// DisputeDAO contract ABI — events + view functions the pendingTx handlers need
+// DisputeDAO contract ABI — events + view functions the pendingTx handlers need,
+// plus executeResolution (called by the consistency scheduler to finalize
+// overdue disputes; the EVM has no cron, so the backend acts as keeper).
 const disputeDAOAbi = [
   'function getDisputeCore(uint256) view returns (uint256, address, address, address, uint8, bool, bool, uint256)',
   'function getDisputeTimeline(uint256) view returns (string, string, uint256, uint256, uint256)',
   'function getDisputeVoting(uint256) view returns (uint256, uint256, uint256, uint256)',
   'function quorumNumerator() view returns (uint256)',
+  'function executeResolution(uint256 disputeId) external',
   'event DisputeCreated(uint256 indexed disputeId, uint256 indexed projectId, address indexed initiator)',
   'event EvidenceSubmitted(uint256 indexed disputeId, address indexed party, string evidenceURI)',
   'event VotingStarted(uint256 indexed disputeId, uint256 votingDeadline, uint256 votingSnapshot)',
@@ -107,7 +110,9 @@ const disputeDAOAbi = [
 const wallet = new ethers.Wallet(process.env.PRIVATE_KEY || '', provider);
 const projectManagerContract = new ethers.Contract(projectManagerAddress, projectManagerAbi, wallet);
 const escrowVaultContract = new ethers.Contract(escrowVaultAddress, escrowVaultAbi, wallet);
-const disputeDAOContract = new ethers.Contract(disputeDAOAddress, disputeDAOAbi, provider);
+// Bound to wallet (not provider) so the consistency scheduler can write
+// (executeResolution); reads/parsing still work the same.
+const disputeDAOContract = new ethers.Contract(disputeDAOAddress, disputeDAOAbi, wallet);
 
 // VotingPowerSync mints/burns xELITE on-chain to keep balances in line with
 // developers.voting_power (which the DB trigger derives from total_earned ×
