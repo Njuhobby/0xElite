@@ -35,7 +35,6 @@ interface Project {
   requiredSkills: string[];
   totalBudget: string;
   status: string;
-  usesOnchainMilestones?: boolean;
   assignedDeveloper?: {
     address: string;
     githubUsername: string;
@@ -270,7 +269,6 @@ export default function DeveloperProjectDetailPage() {
               milestone={{
                 ...milestone,
                 contractProjectId: project.contractProjectId ?? undefined,
-                usesOnchainMilestones: project.usesOnchainMilestones,
               }}
               projectId={project.id}
               isClient={false}

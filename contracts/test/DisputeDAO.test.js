@@ -89,13 +89,16 @@ describe("DisputeDAO", function () {
     const { usdc, projectManager, escrowVault, owner, client, developer } =
       fixtures;
 
-    // Create project
-    await projectManager.connect(client).createProject(PROJECT_BUDGET);
+    // Create project (single milestone covering full budget)
+    const milestoneHash = ethers.keccak256(ethers.toUtf8Bytes("m"));
+    await projectManager
+      .connect(client)
+      .createProjectWithMilestones(PROJECT_BUDGET, [PROJECT_BUDGET], [milestoneHash]);
 
     // Assign developer (owner-only)
     await projectManager
       .connect(owner)
-      .assignDeveloper(PROJECT_ID, developer.address);
+      .assignDevelopers(PROJECT_ID, [developer.address]);
 
     // Client deposits escrow
     await usdc.mint(client.address, PROJECT_BUDGET);

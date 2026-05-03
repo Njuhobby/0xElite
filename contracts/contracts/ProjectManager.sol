@@ -106,12 +106,6 @@ contract ProjectManager is
         uint256 totalBudget
     );
 
-    /// @notice Emitted when a developer is assigned to a project (single)
-    event DeveloperAssigned(
-        uint256 indexed projectId,
-        address indexed developer
-    );
-
     /// @notice Emitted when project state changes
     event ProjectStateChanged(
         uint256 indexed projectId,
@@ -206,68 +200,6 @@ contract ProjectManager is
     // =========================================================================
     // Project Functions
     // =========================================================================
-
-    /// @notice Create a new project on-chain (simple — no milestones)
-    /// @param _totalBudget Total project budget in USDC base units (6 decimals)
-    /// @return projectId The newly created project ID
-    function createProject(uint256 _totalBudget) external returns (uint256) {
-        require(_totalBudget > 0, "Budget must be positive");
-
-        uint256 projectId = nextProjectId++;
-
-        projects[projectId] = Project({
-            projectId: projectId,
-            client: msg.sender,
-            assignedDeveloper: address(0),
-            state: ProjectState.Draft,
-            totalBudget: _totalBudget,
-            createdAt: block.timestamp,
-            activatedAt: 0,
-            completedAt: 0
-        });
-
-        emit ProjectCreated(projectId, msg.sender, _totalBudget);
-
-        return projectId;
-    }
-
-    /// @notice Assign a single developer to a project (backend service only)
-    /// @param _projectId Project to assign
-    /// @param _developer Developer wallet address
-    function assignDeveloper(uint256 _projectId, address _developer) external onlyOwner {
-        Project storage project = projects[_projectId];
-        require(project.client != address(0), "Project does not exist");
-        require(project.state == ProjectState.Draft, "Project not in draft state");
-        require(_developer != address(0), "Invalid developer address");
-
-        project.assignedDeveloper = _developer;
-        project.activatedAt = block.timestamp;
-
-        ProjectState oldState = project.state;
-        project.state = ProjectState.Active;
-
-        emit DeveloperAssigned(_projectId, _developer);
-        emit ProjectStateChanged(_projectId, oldState, ProjectState.Active);
-    }
-
-    /// @notice Update project state (backend service or dispute contract)
-    /// @param _projectId Project to update
-    /// @param _newState New project state
-    function updateProjectState(uint256 _projectId, ProjectState _newState) external onlyOwner {
-        Project storage project = projects[_projectId];
-        require(project.client != address(0), "Project does not exist");
-
-        ProjectState oldState = project.state;
-        require(oldState != _newState, "State unchanged");
-
-        project.state = _newState;
-
-        if (_newState == ProjectState.Completed) {
-            project.completedAt = block.timestamp;
-        }
-
-        emit ProjectStateChanged(_projectId, oldState, _newState);
-    }
 
     // =========================================================================
     // Milestone Functions

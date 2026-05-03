@@ -137,8 +137,8 @@ router.post('/', async (req: Request, res: Response) => {
     const projectResult = await db.query(
       `INSERT INTO projects (
         client_address, title, description, required_skills, total_budget,
-        status, uses_onchain_milestones, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, 'draft', true, NOW(), NOW())
+        status, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, 'draft', NOW(), NOW())
       RETURNING *`,
       [clientAddress, title, description, JSON.stringify(requiredSkills), totalBudget]
     );
@@ -190,7 +190,6 @@ router.post('/', async (req: Request, res: Response) => {
       requiredSkills: project.required_skills,
       totalBudget: project.total_budget,
       status: 'draft',
-      usesOnchainMilestones: true,
       assignedDeveloper: null,
       milestones: createdMilestones.map((m: any) => ({
         id: m.id,

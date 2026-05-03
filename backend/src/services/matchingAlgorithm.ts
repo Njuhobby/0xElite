@@ -224,9 +224,9 @@ async function assignDeveloper(
       developer: developerAddress,
     });
 
-    const tx = await projectManagerContract.assignDeveloper(
+    const tx = await projectManagerContract.assignDevelopers(
       project.contractProjectId,
-      developerAddress
+      [developerAddress]
     );
     const receipt = await tx.wait();
 

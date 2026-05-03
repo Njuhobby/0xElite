@@ -50,7 +50,6 @@ interface Milestone {
   reviewNotes?: string;
   onChainIndex?: number;
   contractProjectId?: string;
-  usesOnchainMilestones?: boolean;
 }
 
 interface Props {
@@ -221,29 +220,18 @@ Timestamp: ${timestamp}`;
   };
 
   const handleApprove = async () => {
-    setError('');
-    setIsUpdating(true);
-
-    // For on-chain milestone projects, call approveMilestone directly on-chain
-    if (milestone.usesOnchainMilestones && milestone.contractProjectId != null && milestone.onChainIndex != null) {
-      approveOnChain({
-        address: getProjectManagerAddress(),
-        abi: PROJECT_MANAGER_ABI,
-        functionName: 'approveMilestone',
-        args: [BigInt(milestone.contractProjectId), milestone.onChainIndex],
-      });
+    if (milestone.contractProjectId == null || milestone.onChainIndex == null) {
+      setError('Milestone is missing on-chain coordinates');
       return;
     }
-
-    // Fallback: backend-mediated approval for simple projects
-    try {
-      const message = generateMessage('Approve milestone completion');
-      const signature = await signMessageAsync({ message });
-      await updateMilestone(signature, message);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign message');
-      setIsUpdating(false);
-    }
+    setError('');
+    setIsUpdating(true);
+    approveOnChain({
+      address: getProjectManagerAddress(),
+      abi: PROJECT_MANAGER_ABI,
+      functionName: 'approveMilestone',
+      args: [BigInt(milestone.contractProjectId), milestone.onChainIndex],
+    });
   };
 
   const config = statusConfig[milestone.status] || statusConfig.pending;
@@ -351,9 +339,7 @@ Timestamp: ${timestamp}`;
               ? 'Confirming on-chain...'
               : isUpdating
               ? 'Approving...'
-              : milestone.usesOnchainMilestones
-              ? 'Approve On-Chain & Release Payment'
-              : 'Approve & Mark as Completed'}
+              : 'Approve On-Chain & Release Payment'}
           </button>
         </div>
       )}

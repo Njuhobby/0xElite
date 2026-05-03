@@ -50,28 +50,20 @@ if (!eliteTokenAddress) {
   throw new Error('ELITE_TOKEN_ADDRESS not configured in .env');
 }
 
-// ProjectManager contract ABI (V2 — includes milestones)
+// ProjectManager contract ABI
 const projectManagerAbi = [
-  // V1 functions
-  'function createProject(uint256 _totalBudget) external returns (uint256)',
-  'function assignDeveloper(uint256 _projectId, address _developer) external',
-  'function updateProjectState(uint256 _projectId, uint8 _newState) external',
-  'function getProject(uint256 _projectId) external view returns (tuple(uint256 projectId, address client, address assignedDeveloper, uint8 state, uint256 totalBudget, uint256 createdAt, uint256 activatedAt, uint256 completedAt))',
-  // V2 functions
   'function createProjectWithMilestones(uint256 totalBudget, uint128[] milestoneBudgets, bytes32[] milestoneHashes) external returns (uint256)',
   'function assignDevelopers(uint256 _projectId, address[] _developers) external',
   'function approveMilestone(uint256 _projectId, uint8 _milestoneIndex) external',
   'function updateMilestoneStatus(uint256 _projectId, uint8 _milestoneIndex, uint8 _newStatus) external',
+  'function getProject(uint256 _projectId) external view returns (tuple(uint256 projectId, address client, address assignedDeveloper, uint8 state, uint256 totalBudget, uint256 createdAt, uint256 activatedAt, uint256 completedAt))',
   'function getMilestone(uint256 _projectId, uint8 _index) external view returns (tuple(uint128 budget, bytes32 detailsHash, uint8 status))',
   'function getMilestones(uint256 _projectId) external view returns (tuple(uint128 budget, bytes32 detailsHash, uint8 status)[])',
   'function getProjectDevelopers(uint256 _projectId) external view returns (address[])',
   'function isProjectDeveloper(uint256 _projectId, address _addr) external view returns (bool)',
   'function version() external pure returns (string)',
-  // V1 events
   'event ProjectCreated(uint256 indexed projectId, address indexed client, uint256 totalBudget)',
-  'event DeveloperAssigned(uint256 indexed projectId, address indexed developer)',
   'event ProjectStateChanged(uint256 indexed projectId, uint8 oldState, uint8 newState)',
-  // V2 events
   'event MilestonesCreated(uint256 indexed projectId, uint8 count)',
   'event MilestoneStatusChanged(uint256 indexed projectId, uint8 milestoneIndex, uint8 oldStatus, uint8 newStatus)',
   'event MilestoneApproved(uint256 indexed projectId, uint8 milestoneIndex, uint256 developerPayment, uint256 platformFee)',
@@ -128,7 +120,7 @@ const contracts = {
 
 // Initialize routes with dependencies
 initializeProjects(db, projectManagerContract);
-initializeMilestones(db, projectManagerContract, escrowVaultContract);
+initializeMilestones(db, projectManagerContract);
 initializeClients(db);
 initializeEscrow(db, escrowVaultContract, projectManagerContract);
 initializeAdmin(projectManagerContract);

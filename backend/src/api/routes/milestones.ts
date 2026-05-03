@@ -4,19 +4,16 @@ import { ethers } from 'ethers';
 import { verifySignature } from '../../utils/signature';
 import { logger } from '../../utils/logger';
 import { createNotification } from '../../services/notificationService';
-import { processPendingQueue } from '../../services/matchingAlgorithm';
 
 const router = express.Router();
 
 // Database and contract instances
 let db: Pool;
 let projectManagerContract: ethers.Contract;
-let escrowVaultContract: ethers.Contract;
 
-export function initialize(database: Pool, contract: ethers.Contract, escrowContract: ethers.Contract) {
+export function initialize(database: Pool, contract: ethers.Contract) {
   db = database;
   projectManagerContract = contract;
-  escrowVaultContract = escrowContract;
 }
 
 // =====================================================
@@ -162,11 +159,10 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch milestone with V2 flag
     const milestoneResult = await db.query(
       `SELECT m.*, p.client_address, p.assigned_developer, p.status as project_status,
               p.title as project_title, p.total_budget,
-              p.uses_onchain_milestones, p.contract_project_id, m.on_chain_index
+              p.contract_project_id, m.on_chain_index
        FROM milestones m
        JOIN projects p ON m.project_id = p.id
        WHERE m.id = $1`,
@@ -192,15 +188,15 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Validate status transitions. Developer doesn't have a separate "start"
-    // action — they go directly from pending → pending_review when notifying
-    // the client that work is complete. (in_progress remains a legal source
-    // state for legacy rows, but nothing new transitions into it.)
+    // Validate status transitions. Developer goes pending → pending_review
+    // (notify complete); milestone completion goes through the on-chain
+    // approveMilestone path, not this endpoint, so 'completed' is not a legal
+    // target here.
     const currentStatus = milestone.status;
     const validTransitions: Record<string, string[]> = {
       pending: ['pending_review'],
       in_progress: ['pending_review', 'disputed'],
-      pending_review: ['completed', 'pending', 'disputed'],
+      pending_review: ['pending', 'disputed'],
       completed: [],
       disputed: ['pending'],
     };
@@ -212,8 +208,6 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Developer can only mark milestones as pending_review (notify complete).
-    // Client can approve (→ completed) or send back (→ pending) from pending_review.
     if (isDeveloper && status !== 'pending_review') {
       return res.status(403).json({
         error: 'FORBIDDEN',
@@ -224,15 +218,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (isClient && currentStatus !== 'pending_review' && status !== 'disputed') {
       return res.status(403).json({
         error: 'FORBIDDEN',
-        message: 'Client can only approve/reject milestones in pending_review status',
-      });
-    }
-
-    // For V2 projects, block completion via backend — must use on-chain approveMilestone
-    if (milestone.uses_onchain_milestones && status === 'completed') {
-      return res.status(400).json({
-        error: 'V2_ONCHAIN_REQUIRED',
-        message: 'Use on-chain approveMilestone for V2 projects. Payment is handled atomically by the smart contract.',
+        message: 'Client can only send back / dispute milestones in pending_review status',
       });
     }
 
@@ -243,116 +229,14 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     if (status === 'pending_review') {
       updates.push(`submitted_at = NOW()`);
-      // Stamp started_at on the first dev-driven transition (we no longer
-      // have a separate "start" action so this is the closest signal).
       if (!milestone.started_at) {
         updates.push(`started_at = NOW()`);
       }
     }
 
-    // Handle milestone completion and payment release
-    if (status === 'completed') {
-      // Get client tier to calculate platform fee
-      const clientResult = await db.query(
-        'SELECT projects_completed FROM clients WHERE wallet_address = $1',
-        [milestone.client_address]
-      );
-
-      if (clientResult.rows.length === 0) {
-        return res.status(404).json({
-          error: 'NOT_FOUND',
-          message: 'Client not found',
-        });
-      }
-
-      const projectsCompleted = parseInt(clientResult.rows[0].projects_completed);
-
-      // Calculate platform fee based on client tier
-      // Bronze (0-2 projects): 15%, Silver (3-9): 10%, Gold (10+): 5%
-      let platformFeePercentage: number;
-      if (projectsCompleted >= 10) {
-        platformFeePercentage = 0.05; // Gold: 5%
-      } else if (projectsCompleted >= 3) {
-        platformFeePercentage = 0.10; // Silver: 10%
-      } else {
-        platformFeePercentage = 0.15; // Bronze: 15%
-      }
-
-      const milestoneBudget = parseFloat(milestone.budget);
-      const platformFee = milestoneBudget * platformFeePercentage;
-      const developerPayment = milestoneBudget - platformFee;
-
-      // Get contract project ID
-      const projectResult = await db.query(
-        'SELECT contract_project_id FROM projects WHERE id = $1',
-        [milestone.project_id]
-      );
-
-      const contractProjectId = projectResult.rows[0].contract_project_id;
-
-      // Release payment to developer
-      try {
-        logger.info('Releasing payment for completed milestone', {
-          milestoneId: id,
-          contractProjectId,
-          developerPayment,
-          platformFee,
-        });
-
-        // Convert amounts to USDC format (6 decimals)
-        const developerPaymentUsdc = ethers.parseUnits(developerPayment.toFixed(6), 6);
-        const platformFeeUsdc = ethers.parseUnits(platformFee.toFixed(6), 6);
-
-        // Release payment to developer
-        const releaseTx = await escrowVaultContract.release(
-          contractProjectId,
-          milestone.assigned_developer,
-          developerPaymentUsdc
-        );
-        const releaseReceipt = await releaseTx.wait();
-
-        // Release platform fee
-        const feeTx = await escrowVaultContract.releaseFee(
-          contractProjectId,
-          platformFeeUsdc
-        );
-        await feeTx.wait();
-
-        // Update milestone with payment details
-        updates.push(`payment_amount = $${paramCount++}`);
-        values.push(developerPayment);
-        updates.push(`platform_fee = $${paramCount++}`);
-        values.push(platformFee);
-        updates.push(`payment_tx_hash = $${paramCount++}`);
-        values.push(releaseReceipt.hash);
-        updates.push(`paid_at = NOW()`);
-        updates.push(`completed_at = NOW()`);
-
-        if (reviewNotes) {
-          updates.push(`review_notes = $${paramCount++}`);
-          values.push(reviewNotes);
-        }
-
-        logger.info('Payment released successfully', {
-          milestoneId: id,
-          txHash: releaseReceipt.hash,
-          developerPayment,
-          platformFee,
-        });
-      } catch (error: any) {
-        logger.error('Failed to release payment', { error, milestoneId: id });
-        return res.status(500).json({
-          error: 'PAYMENT_FAILED',
-          message: 'Failed to release escrow payment. Milestone not marked as completed.',
-          details: error.message,
-        });
-      }
-    } else {
-      // For non-completed status updates, just update the status
-      if (reviewNotes) {
-        updates.push(`review_notes = $${paramCount++}`);
-        values.push(reviewNotes);
-      }
+    if (reviewNotes) {
+      updates.push(`review_notes = $${paramCount++}`);
+      values.push(reviewNotes);
     }
 
     updates.push(`updated_at = NOW()`);
@@ -363,7 +247,6 @@ router.put('/:id', async (req: Request, res: Response) => {
       values
     );
 
-    // Send notifications based on status change
     if (status === 'pending_review') {
       await createNotification(
         milestone.client_address,
@@ -372,25 +255,18 @@ router.put('/:id', async (req: Request, res: Response) => {
         `A milestone in your project "${milestone.project_title}" has been submitted and is ready for your review.`,
         `/dashboard/client/projects/${milestone.project_id}`
       );
-    } else if (status === 'completed' && milestone.assigned_developer) {
-      await createNotification(
-        milestone.assigned_developer,
-        'payment_received',
-        'Payment Received',
-        `Your milestone in "${milestone.project_title}" has been approved and payment has been released.`,
-        '/dashboard/developer/projects'
-      );
     }
 
-    // For V2 projects, relay status change to on-chain contract
-    if (milestone.uses_onchain_milestones && milestone.on_chain_index !== null && status !== 'completed') {
+    // Relay the status change on-chain — approveMilestone in the contract
+    // requires the milestone to be in PendingReview state, so dev's
+    // "pending → pending_review" transition has to land on-chain too.
+    if (milestone.on_chain_index !== null) {
       const milestoneStatusMap: Record<string, number> = {
         pending: 0,
         in_progress: 1,
         pending_review: 2,
         disputed: 4,
       };
-
       const onChainStatus = milestoneStatusMap[status];
       if (onChainStatus !== undefined) {
         try {
@@ -400,7 +276,6 @@ router.put('/:id', async (req: Request, res: Response) => {
             onChainStatus
           );
           await tx.wait();
-
           logger.info('Milestone status updated on-chain', {
             milestoneId: id,
             contractProjectId: milestone.contract_project_id,
@@ -414,102 +289,10 @@ router.put('/:id', async (req: Request, res: Response) => {
       }
     }
 
-    // If milestone completed, check if all project milestones are done
-    if (status === 'completed') {
-      const projectMilestonesResult = await db.query(
-        `SELECT COUNT(*) as total,
-                COUNT(*) FILTER (WHERE status = 'completed') as completed
-         FROM milestones
-         WHERE project_id = $1`,
-        [milestone.project_id]
-      );
-
-      const { total, completed } = projectMilestonesResult.rows[0];
-
-      if (parseInt(total) === parseInt(completed)) {
-        // All milestones completed - update project status
-        await db.query(
-          `UPDATE projects
-           SET status = 'completed',
-               completed_at = NOW(),
-               updated_at = NOW()
-           WHERE id = $1`,
-          [milestone.project_id]
-        );
-
-        // Update on-chain state
-        const projectResult = await db.query(
-          'SELECT contract_project_id FROM projects WHERE id = $1',
-          [milestone.project_id]
-        );
-
-        const contractProjectId = projectResult.rows[0].contract_project_id;
-
-        try {
-          const tx = await projectManagerContract.updateProjectState(contractProjectId, 2); // Completed
-          await tx.wait();
-
-          logger.info('Project marked as completed on-chain', {
-            projectId: milestone.project_id,
-            contractProjectId,
-          });
-        } catch (error) {
-          logger.error('Failed to update project state on-chain', { error });
-        }
-
-        // Update developer stats
-        if (milestone.assigned_developer) {
-          await db.query(
-            `UPDATE developers
-             SET projects_completed = projects_completed + 1,
-                 availability = 'available',
-                 current_project_id = NULL,
-                 updated_at = NOW()
-             WHERE wallet_address = $1`,
-            [milestone.assigned_developer]
-          );
-        }
-
-        // Update client stats
-        await db.query(
-          `UPDATE clients
-           SET projects_completed = projects_completed + 1,
-               total_spent = total_spent + $1,
-               updated_at = NOW()
-           WHERE wallet_address = $2`,
-          [milestone.total_budget || 0, milestone.client_address]
-        );
-
-        // Developer is now free — try to assign pending projects
-        processPendingQueue(db, projectManagerContract).catch((err) =>
-          logger.error('Error processing pending queue after project completion:', err)
-        );
-
-        // Notify both parties of project completion
-        await createNotification(
-          milestone.client_address,
-          'project_completed',
-          'Project Completed',
-          `Your project "${milestone.project_title}" has been completed. All milestones are done.`,
-          `/dashboard/client/projects/${milestone.project_id}`
-        );
-        if (milestone.assigned_developer) {
-          await createNotification(
-            milestone.assigned_developer,
-            'project_completed',
-            'Project Completed',
-            `The project "${milestone.project_title}" has been completed. Great work!`,
-            '/dashboard/developer/projects'
-          );
-        }
-      }
-    }
-
     res.json({
       id,
       projectId: milestone.project_id,
       status,
-      completedAt: status === 'completed' ? new Date() : null,
       updatedAt: new Date(),
     });
   } catch (error: any) {

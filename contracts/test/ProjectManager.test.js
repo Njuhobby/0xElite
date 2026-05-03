@@ -146,61 +146,7 @@ describe("ProjectManager", function () {
   });
 
   // =========================================================================
-  // 2. Simple Project Creation (no milestones)
-  // =========================================================================
-  describe("Simple Project Creation", function () {
-    let pm;
-    const validBudget = parseUSDC("5000");
-
-    beforeEach(async function () {
-      const result = await setupWithEscrow();
-      pm = result.pm;
-    });
-
-    it("Should create a project with valid budget", async function () {
-      const tx = await pm.connect(client1).createProject(validBudget);
-      const receipt = await tx.wait();
-
-      const event = receipt.logs.find(log => {
-        try { return pm.interface.parseLog(log)?.name === "ProjectCreated"; } catch { return false; }
-      });
-      const parsedEvent = pm.interface.parseLog(event);
-      expect(parsedEvent.args.projectId).to.equal(0);
-      expect(parsedEvent.args.client).to.equal(client1.address);
-      expect(parsedEvent.args.totalBudget).to.equal(validBudget);
-
-      const project = await pm.getProject(0);
-      expect(project.projectId).to.equal(0);
-      expect(project.client).to.equal(client1.address);
-      expect(project.assignedDeveloper).to.equal(ethers.ZeroAddress);
-      expect(project.state).to.equal(0); // Draft
-      expect(project.totalBudget).to.equal(validBudget);
-      expect(project.createdAt).to.be.gt(0);
-      expect(await pm.milestoneCount(0)).to.equal(0);
-    });
-
-    it("Should increment nextProjectId after creation", async function () {
-      await pm.connect(client1).createProject(validBudget);
-      expect(await pm.nextProjectId()).to.equal(1);
-      await pm.connect(client2).createProject(validBudget);
-      expect(await pm.nextProjectId()).to.equal(2);
-    });
-
-    it("Should reject project with zero budget", async function () {
-      await expect(
-        pm.connect(client1).createProject(0)
-      ).to.be.revertedWith("Budget must be positive");
-    });
-
-    it("Should allow same client to create multiple projects", async function () {
-      await pm.connect(client1).createProject(validBudget);
-      await pm.connect(client1).createProject(parseUSDC("3000"));
-      expect(await pm.getProjectCount()).to.equal(2);
-    });
-  });
-
-  // =========================================================================
-  // 3. createProjectWithMilestones
+  // 2. createProjectWithMilestones
   // =========================================================================
   describe("createProjectWithMilestones", function () {
     let pm;
@@ -335,19 +281,6 @@ describe("ProjectManager", function () {
       expect(await pm.milestoneCount(0)).to.equal(1);
     });
 
-    it("Simple and milestone projects can coexist", async function () {
-      await pm.connect(client1).createProject(parseUSDC("1000"));
-      const total = parseUSDC("2000");
-      await pm.connect(client2).createProjectWithMilestones(
-        total,
-        [parseUSDC("1000"), parseUSDC("1000")],
-        [ethers.keccak256(ethers.toUtf8Bytes("m1")), ethers.keccak256(ethers.toUtf8Bytes("m2"))]
-      );
-
-      expect(await pm.getProjectCount()).to.equal(2);
-      expect(await pm.milestoneCount(0)).to.equal(0);
-      expect(await pm.milestoneCount(1)).to.equal(2);
-    });
   });
 
   // =========================================================================
@@ -360,52 +293,6 @@ describe("ProjectManager", function () {
     beforeEach(async function () {
       const result = await setupWithEscrow();
       pm = result.pm;
-    });
-
-    describe("assignDeveloper (single)", function () {
-      beforeEach(async function () {
-        await pm.connect(client1).createProject(validBudget);
-      });
-
-      it("Should assign developer to draft project", async function () {
-        const tx = await pm.connect(owner).assignDeveloper(0, developer1.address);
-        const receipt = await tx.wait();
-
-        const assignEvent = receipt.logs.find(log => {
-          try { return pm.interface.parseLog(log)?.name === "DeveloperAssigned"; } catch { return false; }
-        });
-        expect(assignEvent).to.not.be.undefined;
-
-        const project = await pm.getProject(0);
-        expect(project.assignedDeveloper).to.equal(developer1.address);
-        expect(project.state).to.equal(1); // Active
-        expect(project.activatedAt).to.be.gt(0);
-      });
-
-      it("Should only allow owner to assign developers", async function () {
-        await expect(
-          pm.connect(client1).assignDeveloper(0, developer1.address)
-        ).to.be.revertedWithCustomError(pm, "OwnableUnauthorizedAccount");
-      });
-
-      it("Should reject assignment to non-existent project", async function () {
-        await expect(
-          pm.connect(owner).assignDeveloper(999, developer1.address)
-        ).to.be.revertedWith("Project does not exist");
-      });
-
-      it("Should reject assignment with zero address", async function () {
-        await expect(
-          pm.connect(owner).assignDeveloper(0, ethers.ZeroAddress)
-        ).to.be.revertedWith("Invalid developer address");
-      });
-
-      it("Should reject assignment to non-draft project", async function () {
-        await pm.connect(owner).assignDeveloper(0, developer1.address);
-        await expect(
-          pm.connect(owner).assignDeveloper(0, developer2.address)
-        ).to.be.revertedWith("Project not in draft state");
-      });
     });
 
     describe("assignDevelopers (multi)", function () {
@@ -475,59 +362,7 @@ describe("ProjectManager", function () {
   });
 
   // =========================================================================
-  // 5. Project State Management
-  // =========================================================================
-  describe("Project State Management", function () {
-    let pm;
-    const validBudget = parseUSDC("5000");
-
-    beforeEach(async function () {
-      const result = await setupWithEscrow();
-      pm = result.pm;
-      await pm.connect(client1).createProject(validBudget);
-      await pm.connect(owner).assignDeveloper(0, developer1.address);
-    });
-
-    it("Should update project state to Completed", async function () {
-      await pm.connect(owner).updateProjectState(0, 2);
-      const project = await pm.getProject(0);
-      expect(project.state).to.equal(2);
-      expect(project.completedAt).to.be.gt(0);
-    });
-
-    it("Should update project state to Disputed", async function () {
-      await pm.connect(owner).updateProjectState(0, 3);
-      const project = await pm.getProject(0);
-      expect(project.state).to.equal(3);
-    });
-
-    it("Should update project state to Cancelled", async function () {
-      await pm.connect(owner).updateProjectState(0, 4);
-      const project = await pm.getProject(0);
-      expect(project.state).to.equal(4);
-    });
-
-    it("Should only allow owner to update state", async function () {
-      await expect(
-        pm.connect(client1).updateProjectState(0, 2)
-      ).to.be.revertedWithCustomError(pm, "OwnableUnauthorizedAccount");
-    });
-
-    it("Should reject state update for non-existent project", async function () {
-      await expect(
-        pm.connect(owner).updateProjectState(999, 2)
-      ).to.be.revertedWith("Project does not exist");
-    });
-
-    it("Should reject state update to same state", async function () {
-      await expect(
-        pm.connect(owner).updateProjectState(0, 1) // Already Active
-      ).to.be.revertedWith("State unchanged");
-    });
-  });
-
-  // =========================================================================
-  // 6. updateMilestoneStatus
+  // 5. updateMilestoneStatus
   // =========================================================================
   describe("updateMilestoneStatus", function () {
     let pm;
@@ -957,12 +792,6 @@ describe("ProjectManager", function () {
       expect(ms[0].budget).to.equal(parseUSDC("1000"));
     });
 
-    it("getMilestones should return empty for simple project", async function () {
-      await pm.connect(client2).createProject(parseUSDC("500"));
-      const ms = await pm.getMilestones(1);
-      expect(ms.length).to.equal(0);
-    });
-
     it("getMilestone should revert on invalid index", async function () {
       await expect(pm.getMilestone(0, 10)).to.be.revertedWithCustomError(pm, "MilestoneNotFound");
     });
@@ -1003,20 +832,26 @@ describe("ProjectManager", function () {
     });
 
     it("Should allow new owner to perform admin functions after transfer", async function () {
-      await pm.connect(client1).createProject(parseUSDC("5000"));
+      const total = parseUSDC("5000");
+      await pm.connect(client1).createProjectWithMilestones(
+        total, [total], [ethers.keccak256(ethers.toUtf8Bytes("m"))]
+      );
       await pm.connect(owner).transferOwnership(client1.address);
 
       await expect(
-        pm.connect(client1).assignDeveloper(0, developer1.address)
+        pm.connect(client1).assignDevelopers(0, [developer1.address])
       ).to.not.be.reverted;
     });
 
     it("Should prevent old owner from performing admin functions after transfer", async function () {
-      await pm.connect(client1).createProject(parseUSDC("5000"));
+      const total = parseUSDC("5000");
+      await pm.connect(client1).createProjectWithMilestones(
+        total, [total], [ethers.keccak256(ethers.toUtf8Bytes("m"))]
+      );
       await pm.connect(owner).transferOwnership(client1.address);
 
       await expect(
-        pm.connect(owner).assignDeveloper(0, developer1.address)
+        pm.connect(owner).assignDevelopers(0, [developer1.address])
       ).to.be.revertedWithCustomError(pm, "OwnableUnauthorizedAccount");
     });
   });
