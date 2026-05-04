@@ -375,16 +375,16 @@ contract ProjectManager is
     }
 
     /**
-     * @notice Update milestone status (backend service only — for start work, submit, disputes)
-     * @param _projectId Project ID
-     * @param _milestoneIndex Milestone index (0-based)
-     * @param _newStatus New milestone status
+     * @notice Update milestone status.
+     *         Owner can set any non-Completed transition (kept for ops/recovery).
+     *         An assigned developer can set Pending/InProgress → PendingReview on
+     *         their own milestone — that's the "Mark as Complete" UX path.
      */
     function updateMilestoneStatus(
         uint256 _projectId,
         uint8 _milestoneIndex,
         MilestoneStatus _newStatus
-    ) external onlyOwner {
+    ) external {
         if (_milestoneIndex >= milestoneCount[_projectId]) revert MilestoneNotFound();
 
         Milestone storage milestone = milestones[_projectId][_milestoneIndex];
@@ -394,6 +394,24 @@ contract ProjectManager is
         if (_newStatus == MilestoneStatus.Completed) revert InvalidMilestoneStatus();
         if (oldStatus == _newStatus) revert InvalidMilestoneStatus();
         if (oldStatus == MilestoneStatus.Completed) revert InvalidMilestoneStatus();
+
+        if (msg.sender != owner()) {
+            // Non-owner caller: must be an assigned developer, and the only
+            // legal transition is Pending/InProgress → PendingReview.
+            address[] storage devs = projectDevelopers[_projectId];
+            bool isAssignedDev = false;
+            for (uint256 i = 0; i < devs.length; i++) {
+                if (devs[i] == msg.sender) {
+                    isAssignedDev = true;
+                    break;
+                }
+            }
+            if (!isAssignedDev) revert NotProjectDeveloper();
+            if (_newStatus != MilestoneStatus.PendingReview) revert InvalidMilestoneStatus();
+            if (oldStatus != MilestoneStatus.Pending && oldStatus != MilestoneStatus.InProgress) {
+                revert InvalidMilestoneStatus();
+            }
+        }
 
         milestone.status = _newStatus;
 

@@ -72,6 +72,9 @@ export async function processCompletedAction(
         contracts.votingPowerSync
       );
       break;
+    case 'update_milestone_status':
+      result = await handleUpdateMilestoneStatus(client, row, provider, contracts.projectManager);
+      break;
     case 'create_dispute':
       result = await handleCreateDispute(client, row, provider, contracts.disputeDAO);
       break;
@@ -363,6 +366,101 @@ async function handleApproveMilestone(
           error: err,
         });
       }
+    },
+  };
+}
+
+async function handleUpdateMilestoneStatus(
+  client: PoolClient,
+  row: PendingTxRow,
+  provider: ethers.JsonRpcProvider,
+  projectManagerContract: ethers.Contract
+): Promise<ActionResult> {
+  // entity_id = project UUID; metadata = { milestoneId, onChainIndex, newStatus }
+  // Currently only "Pending → PendingReview" goes through here (the dev's
+  // Mark-as-Complete path).
+  const receipt = await provider.getTransactionReceipt(row.tx_hash);
+  if (!receipt || receipt.status !== 1) {
+    logger.error('handleUpdateMilestoneStatus: receipt missing or failed', {
+      txHash: row.tx_hash,
+      status: receipt?.status,
+    });
+    return { action: 'update_milestone_status' };
+  }
+
+  const parsed = findEvent(receipt, projectManagerContract, 'MilestoneStatusChanged');
+  const onChainIndex =
+    parsed != null
+      ? Number(parsed.args.milestoneIndex)
+      : (row.metadata?.onChainIndex as number | undefined);
+  const newStatusEnum =
+    parsed != null
+      ? Number(parsed.args.newStatus)
+      : undefined;
+
+  if (onChainIndex == null) {
+    logger.error('handleUpdateMilestoneStatus: missing onChainIndex', { txHash: row.tx_hash });
+    return { action: 'update_milestone_status' };
+  }
+
+  // 0=Pending 1=InProgress 2=PendingReview 3=Completed 4=Disputed
+  // We only flip the DB when the chain reports PendingReview to keep this
+  // handler scoped to the dev's mark-complete UX.
+  if (newStatusEnum !== 2) {
+    logger.warn('handleUpdateMilestoneStatus: unexpected newStatus, skipping DB write', {
+      txHash: row.tx_hash,
+      newStatusEnum,
+    });
+    return { action: 'update_milestone_status' };
+  }
+
+  const updateResult = await client.query<{
+    id: string;
+    project_title: string;
+    client_address: string;
+  }>(
+    `UPDATE milestones m
+        SET status = 'pending_review',
+            submitted_at = NOW(),
+            started_at = COALESCE(m.started_at, NOW()),
+            updated_at = NOW()
+       FROM projects p
+      WHERE m.project_id = p.id
+        AND m.project_id = $1
+        AND m.on_chain_index = $2
+        AND m.status IN ('pending', 'in_progress')
+      RETURNING m.id, p.title AS project_title, p.client_address`,
+    [row.entity_id, onChainIndex]
+  );
+
+  if (updateResult.rowCount === 0) {
+    logger.warn('handleUpdateMilestoneStatus: no milestone matched (already pending_review?)', {
+      projectId: row.entity_id,
+      onChainIndex,
+    });
+    return { action: 'update_milestone_status' };
+  }
+
+  const { project_title, client_address } = updateResult.rows[0]!;
+  const projectId = row.entity_id;
+
+  logger.info('handleUpdateMilestoneStatus: flipped to pending_review', {
+    projectId,
+    onChainIndex,
+    milestoneId: updateResult.rows[0]!.id,
+  });
+
+  return {
+    action: 'update_milestone_status',
+    data: { milestoneId: updateResult.rows[0]!.id, onChainIndex },
+    postCommit: async () => {
+      await createNotification(
+        client_address,
+        'milestone_submitted',
+        'Milestone Submitted for Review',
+        `A milestone in your project "${project_title}" has been submitted and is ready for your review.`,
+        `/dashboard/client/projects/${projectId}`
+      );
     },
   };
 }

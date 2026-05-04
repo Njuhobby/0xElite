@@ -419,10 +419,31 @@ describe("ProjectManager", function () {
       ).to.be.revertedWithCustomError(pm, "InvalidMilestoneStatus");
     });
 
-    it("Should revert when non-owner calls", async function () {
+    it("Should revert when caller is not owner or assigned developer", async function () {
       await expect(
-        pm.connect(client1).updateMilestoneStatus(0, 0, 1)
-      ).to.be.revertedWithCustomError(pm, "OwnableUnauthorizedAccount");
+        pm.connect(randomUser).updateMilestoneStatus(0, 0, 2)
+      ).to.be.revertedWithCustomError(pm, "NotProjectDeveloper");
+    });
+
+    it("Assigned developer can transition Pending -> PendingReview", async function () {
+      const tx = await pm.connect(developer1).updateMilestoneStatus(0, 0, 2);
+      await tx.wait();
+      const m = await pm.getMilestone(0, 0);
+      expect(m.status).to.equal(2);
+    });
+
+    it("Assigned developer cannot transition to a non-PendingReview status", async function () {
+      // Pending -> InProgress is owner-only
+      await expect(
+        pm.connect(developer1).updateMilestoneStatus(0, 0, 1)
+      ).to.be.revertedWithCustomError(pm, "InvalidMilestoneStatus");
+    });
+
+    it("Assigned developer cannot transition once status is past Pending/InProgress", async function () {
+      await pm.connect(developer1).updateMilestoneStatus(0, 0, 2); // → PendingReview
+      await expect(
+        pm.connect(developer1).updateMilestoneStatus(0, 0, 2)
+      ).to.be.revertedWithCustomError(pm, "InvalidMilestoneStatus");
     });
 
     it("Should revert on invalid milestone index", async function () {

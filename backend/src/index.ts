@@ -6,7 +6,6 @@ import { ethers } from 'ethers';
 import { Pool } from 'pg';
 import developersRouter from './api/routes/developers';
 import projectsRouter, { initialize as initializeProjects } from './api/routes/projects';
-import milestonesRouter, { initialize as initializeMilestones } from './api/routes/milestones';
 import clientsRouter, { initialize as initializeClients } from './api/routes/clients';
 import escrowRouter, { initialize as initializeEscrow } from './api/routes/escrow';
 import reviewsRouter, { initialize as initializeReviews } from './api/routes/reviews';
@@ -120,7 +119,6 @@ const contracts = {
 
 // Initialize routes with dependencies
 initializeProjects(db, projectManagerContract);
-initializeMilestones(db, projectManagerContract);
 initializeClients(db);
 initializeEscrow(db, escrowVaultContract, projectManagerContract);
 initializeAdmin(projectManagerContract);
@@ -149,7 +147,6 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/developers', developersRouter);
 app.use('/api/projects', projectsRouter);
-app.use('/api/milestones', milestonesRouter);
 app.use('/api/clients', clientsRouter);
 app.use('/api/escrow', escrowRouter);
 app.use('/api/reviews', reviewsRouter);

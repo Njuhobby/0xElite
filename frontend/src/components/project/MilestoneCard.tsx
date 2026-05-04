@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { PROJECT_MANAGER_ABI, getProjectManagerAddress, TX_CONFIRMATIONS } from '@/config/contracts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -89,10 +89,16 @@ export default function MilestoneCard({ milestone, projectId, isClient, isDevelo
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
+  const [pendingHash, setPendingHash] = useState<`0x${string}` | null>(null);
 
-  const { signMessageAsync } = useSignMessage();
+  // Two on-chain operations live on this card:
+  //   1) client → approveMilestone (releases payment)
+  //   2) dev    → updateMilestoneStatus (Pending → PendingReview)
+  // Both follow the same pattern: wagmi sends → POST /api/transactions/pending
+  // → useWaitForTransactionReceipt → DELETE pending. We use one wagmi
+  // useWriteContract per operation so their loading states don't bleed.
 
-  // On-chain milestone approval for milestone-based projects
+  // Client: approveMilestone
   const {
     data: approveHash,
     writeContract: approveOnChain,
@@ -105,7 +111,49 @@ export default function MilestoneCard({ milestone, projectId, isClient, isDevelo
     confirmations: TX_CONFIRMATIONS,
   });
 
-  // Write pending tx when we get approveHash (safety net for poller)
+  // Developer: updateMilestoneStatus
+  const {
+    data: markHash,
+    writeContract: markOnChain,
+    isPending: isMarkingOnChain,
+    error: markOnChainError,
+  } = useWriteContract();
+
+  const { isLoading: isMarkTxPending, isSuccess: isMarkSuccess } = useWaitForTransactionReceipt({
+    hash: markHash,
+    confirmations: TX_CONFIRMATIONS,
+  });
+
+  // On mount, check whether this milestone already has a pending tx for the
+  // current wallet (e.g. user refreshed during confirmation). If so, mirror
+  // it into local state so the button stays disabled until reconciled.
+  useEffect(() => {
+    if (!address || !projectId || milestone.onChainIndex == null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/transactions/pending?wallet=${address}`);
+        if (!res.ok) return;
+        const body = await res.json();
+        const match = (body.transactions ?? []).find((t: { entity_type: string; entity_id: string; action: string; tx_hash: string; metadata: { onChainIndex?: number; milestoneIndex?: number } | null }) =>
+          t.entity_type === 'project' &&
+          t.entity_id === projectId &&
+          (t.action === 'update_milestone_status' || t.action === 'approve_milestone') &&
+          (t.metadata?.onChainIndex === milestone.onChainIndex || t.metadata?.milestoneIndex === milestone.onChainIndex)
+        );
+        if (!cancelled && match) {
+          setPendingHash(match.tx_hash as `0x${string}`);
+        }
+      } catch {
+        // ignore — best-effort UX hint
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, projectId, milestone.onChainIndex]);
+
+  // Approve flow: write pending tx, then delete on confirmation
   useEffect(() => {
     if (approveHash && projectId && address) {
       writePendingTx({
@@ -115,11 +163,11 @@ export default function MilestoneCard({ milestone, projectId, isClient, isDevelo
         txHash: approveHash,
         walletAddress: address,
         metadata: { milestoneIndex: milestone.onChainIndex },
-      }).catch(() => {}); // best-effort early write
+      }).catch(() => {});
+      setPendingHash(approveHash);
     }
   }, [approveHash]);
 
-  // When on-chain approval tx succeeds, ensure pending record exists, then process+delete
   useEffect(() => {
     if (approveHash && isApproveSuccess && isUpdating && projectId && address) {
       (async () => {
@@ -133,6 +181,7 @@ export default function MilestoneCard({ milestone, projectId, isClient, isDevelo
         });
         await deletePendingTx(approveHash);
         setIsUpdating(false);
+        setPendingHash(null);
         setReviewNotes('');
         onUpdate();
       })().catch((err) => {
@@ -142,81 +191,79 @@ export default function MilestoneCard({ milestone, projectId, isClient, isDevelo
     }
   }, [approveHash, isApproveSuccess]);
 
-  // Show on-chain error
   useEffect(() => {
     if (approveOnChainError && isUpdating) {
       (async () => {
         if (approveHash) await deletePendingTx(approveHash);
         setError(approveOnChainError.message);
         setIsUpdating(false);
+        setPendingHash(null);
       })();
     }
   }, [approveOnChainError]);
 
-  const generateMessage = (action: string) => {
-    const timestamp = Date.now();
-    return `${action} milestone on 0xElite
-
-Wallet: ${address}
-Timestamp: ${timestamp}`;
-  };
-
-  const updateMilestone = async (signature: string, message: string) => {
-    try {
-      const payload: Record<string, unknown> = {
-        address,
-        message,
-        signature,
-      };
-
-      // Developer notifying that the milestone is complete
-      if (isDeveloper && (milestone.status === 'pending' || milestone.status === 'in_progress')) {
-        payload.status = 'pending_review';
-      }
-      // Client approving
-      else if (milestone.status === 'pending_review' && isClient) {
-        payload.status = 'completed';
-        if (reviewNotes.trim()) {
-          payload.reviewNotes = reviewNotes;
-        }
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/milestones/${milestone.id}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update milestone');
-      }
-
-      setReviewNotes('');
-      onUpdate();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update milestone');
-    } finally {
-      setIsUpdating(false);
+  // Mark-as-complete flow (dev) — same shape, different action key
+  useEffect(() => {
+    if (markHash && projectId && address) {
+      writePendingTx({
+        entityType: 'project',
+        entityId: projectId,
+        action: 'update_milestone_status',
+        txHash: markHash,
+        walletAddress: address,
+        metadata: { onChainIndex: milestone.onChainIndex, newStatus: 'pending_review' },
+      }).catch(() => {});
+      setPendingHash(markHash);
     }
-  };
+  }, [markHash]);
+
+  useEffect(() => {
+    if (markHash && isMarkSuccess && isUpdating && projectId && address) {
+      (async () => {
+        await writePendingTx({
+          entityType: 'project',
+          entityId: projectId,
+          action: 'update_milestone_status',
+          txHash: markHash,
+          walletAddress: address,
+          metadata: { onChainIndex: milestone.onChainIndex, newStatus: 'pending_review' },
+        });
+        await deletePendingTx(markHash);
+        setIsUpdating(false);
+        setPendingHash(null);
+        onUpdate();
+      })().catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to record milestone submission');
+        setIsUpdating(false);
+      });
+    }
+  }, [markHash, isMarkSuccess]);
+
+  useEffect(() => {
+    if (markOnChainError && isUpdating) {
+      (async () => {
+        if (markHash) await deletePendingTx(markHash);
+        setError(markOnChainError.message);
+        setIsUpdating(false);
+        setPendingHash(null);
+      })();
+    }
+  }, [markOnChainError]);
 
   const handleMarkComplete = async () => {
+    if (milestone.contractProjectId == null || milestone.onChainIndex == null) {
+      setError('Milestone is missing on-chain coordinates');
+      return;
+    }
     setError('');
     setIsUpdating(true);
-    try {
-      const message = generateMessage('Mark milestone as complete');
-      const signature = await signMessageAsync({ message });
-      await updateMilestone(signature, message);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign message');
-      setIsUpdating(false);
-    }
+    markOnChain({
+      address: getProjectManagerAddress(),
+      abi: PROJECT_MANAGER_ABI,
+      functionName: 'updateMilestoneStatus',
+      // 2 = MilestoneStatus.PendingReview
+      args: [BigInt(milestone.contractProjectId), milestone.onChainIndex, 2],
+    });
   };
 
   const handleApprove = async () => {
@@ -304,16 +351,21 @@ Timestamp: ${timestamp}`;
         </div>
       )}
 
-      {/* Developer Action — single click flips milestone to pending_review and
-          notifies the client. No deliverable URL capture here; that lives in
+      {/* Developer Action — sign updateMilestoneStatus(Pending → PendingReview)
+          on-chain. Backend reconciler flips the DB row and notifies the client
+          once the tx confirms. No deliverable URL capture here; that lives in
           the upcoming client/dev communication module. */}
       {isDeveloper && (milestone.status === 'pending' || milestone.status === 'in_progress') && (
         <button
           onClick={handleMarkComplete}
-          disabled={isUpdating}
+          disabled={isUpdating || isMarkingOnChain || isMarkTxPending || pendingHash != null}
           className="w-full py-2.5 bg-violet-600 rounded-lg text-white font-semibold text-sm hover:bg-violet-700 transition-colors disabled:opacity-50"
         >
-          {isUpdating ? 'Notifying...' : 'Mark as Complete'}
+          {isMarkingOnChain
+            ? 'Confirm in wallet...'
+            : isMarkTxPending || pendingHash != null
+            ? 'Submitting on-chain...'
+            : 'Mark as Complete'}
         </button>
       )}
 
@@ -332,13 +384,13 @@ Timestamp: ${timestamp}`;
 
           <button
             onClick={handleApprove}
-            disabled={isUpdating || isApprovingOnChain || isApproveTxPending}
+            disabled={isUpdating || isApprovingOnChain || isApproveTxPending || pendingHash != null}
             className="w-full py-2.5 bg-green-600 rounded-lg text-white font-semibold text-sm hover:bg-green-700 transition-colors disabled:opacity-50"
           >
-            {isApprovingOnChain || isApproveTxPending
+            {isApprovingOnChain
+              ? 'Confirm in wallet...'
+              : isApproveTxPending || pendingHash != null
               ? 'Confirming on-chain...'
-              : isUpdating
-              ? 'Approving...'
               : 'Approve On-Chain & Release Payment'}
           </button>
         </div>

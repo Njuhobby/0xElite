@@ -30,6 +30,18 @@ export const PROJECT_MANAGER_ABI = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+  // Developer flips own milestone Pending → PendingReview (Mark as Complete)
+  {
+    type: 'function',
+    name: 'updateMilestoneStatus',
+    inputs: [
+      { name: '_projectId', type: 'uint256' },
+      { name: '_milestoneIndex', type: 'uint8' },
+      { name: '_newStatus', type: 'uint8' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
   // View: Get all milestones
   {
     type: 'function',
