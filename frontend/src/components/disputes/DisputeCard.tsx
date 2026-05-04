@@ -18,6 +18,7 @@ interface DisputeCardProps {
     clientVoteWeight: string;
     developerVoteWeight: string;
     totalVoteWeight: string;
+    quorumRequired?: string | null;
     winner: string | null;
     resolvedByOwner: boolean;
     createdAt: string;
@@ -33,7 +34,13 @@ export default function DisputeCard({ dispute }: DisputeCardProps) {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <span className="text-gray-900 font-semibold">Dispute #{dispute.disputeNumber}</span>
-            <DisputeStatusBadge status={dispute.status} />
+            <DisputeStatusBadge
+              status={dispute.status}
+              evidenceDeadline={dispute.evidenceDeadline}
+              votingDeadline={dispute.votingDeadline}
+              totalVoteWeight={dispute.totalVoteWeight}
+              quorumRequired={dispute.quorumRequired ?? null}
+            />
           </div>
           {timeLeft && (
             <span className="text-xs text-gray-500">{timeLeft}</span>

@@ -224,7 +224,13 @@ export default function DisputeDetailPage() {
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">Dispute #{dispute.disputeNumber}</h1>
-            <DisputeStatusBadge status={dispute.status} />
+            <DisputeStatusBadge
+              status={dispute.status}
+              evidenceDeadline={dispute.evidenceDeadline}
+              votingDeadline={dispute.votingDeadline}
+              totalVoteWeight={dispute.totalVoteWeight}
+              quorumRequired={dispute.quorumRequired}
+            />
           </div>
           <p className="text-gray-500 text-sm mt-1">
             Filed by {dispute.initiatorRole} on{' '}
