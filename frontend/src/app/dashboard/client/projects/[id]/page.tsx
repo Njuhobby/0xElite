@@ -21,6 +21,7 @@ interface Milestone {
   completedAt: string | null;
   deliverableUrls: string[] | null;
   reviewNotes: string | null;
+  onChainIndex: number | null;
 }
 
 interface DeveloperInfo {
@@ -313,6 +314,7 @@ export default function ClientProjectDetailPage() {
                 completedAt: milestone.completedAt ?? undefined,
                 deliverableUrls: milestone.deliverableUrls ?? undefined,
                 reviewNotes: milestone.reviewNotes ?? undefined,
+                onChainIndex: milestone.onChainIndex ?? undefined,
                 contractProjectId: project.contractProjectId ?? undefined,
               }}
               projectId={project.id}

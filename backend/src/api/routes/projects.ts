@@ -322,6 +322,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         completedAt: m.completed_at,
         deliverableUrls: m.deliverable_urls,
         reviewNotes: m.review_notes,
+        onChainIndex: m.on_chain_index,
       })),
       createdAt: project.created_at,
       assignedAt: project.assigned_at,
