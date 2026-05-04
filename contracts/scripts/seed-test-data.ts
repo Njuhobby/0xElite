@@ -488,9 +488,9 @@ async function seedProjectRow(
     `INSERT INTO projects (
        client_address, title, description, required_skills, total_budget,
        status, assigned_developer, assigned_at, contract_project_id,
-       uses_onchain_milestones, escrow_deposited, escrow_deposited_at
+       escrow_deposited, escrow_deposited_at
      ) VALUES (
-       $1, $2, $3, $4::jsonb, $5, 'active', $6, NOW(), $7, true, true, NOW()
+       $1, $2, $3, $4::jsonb, $5, 'active', $6, NOW(), $7, true, NOW()
      )
      RETURNING id`,
     [
