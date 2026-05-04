@@ -939,6 +939,56 @@ async function finalizeResolution(
     [releasedDelta, projectId]
   );
 
+  // When the dev wins (or quorum-met execute resolves in dev's favor), the
+  // project just transitioned to 'completed' the same way it would under the
+  // happy-path approveMilestone flow — so mirror handleApproveMilestone's
+  // terminal bookkeeping here too. Otherwise dashboards stay misleading
+  // (projects_completed=0, milestones still "Awaiting Approval", etc.).
+  if (!clientWon) {
+    const projectInfo = await client.query<{
+      client_address: string;
+      assigned_developer: string | null;
+    }>(
+      'SELECT client_address, assigned_developer FROM projects WHERE id = $1',
+      [projectId]
+    );
+    const info = projectInfo.rows[0];
+    if (info) {
+      if (info.assigned_developer) {
+        await client.query(
+          `UPDATE developers SET
+             projects_completed = projects_completed + 1,
+             total_earned = total_earned + $1::decimal,
+             availability = 'available',
+             current_project_id = NULL,
+             updated_at = NOW()
+           WHERE wallet_address = $2`,
+          [developerShare, info.assigned_developer]
+        );
+      }
+      await client.query(
+        `UPDATE clients SET
+           projects_completed = projects_completed + 1,
+           total_spent = total_spent + $1::decimal,
+           updated_at = NOW()
+         WHERE wallet_address = $2`,
+        [developerShare, info.client_address]
+      );
+    }
+
+    // Close out non-completed milestones so the UI doesn't show
+    // "Awaiting Approval" on a project the dispute already settled in
+    // the dev's favor.
+    await client.query(
+      `UPDATE milestones SET
+         status = 'completed',
+         completed_at = NOW(),
+         updated_at = NOW()
+       WHERE project_id = $1 AND status != 'completed'`,
+      [projectId]
+    );
+  }
+
   logger.info('finalizeResolution: dispute resolved', { disputeId, clientWon, byOwner, projectId });
   return { action, data: { clientWon, clientShare, developerShare } };
 }
