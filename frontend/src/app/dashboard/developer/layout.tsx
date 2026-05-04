@@ -22,6 +22,11 @@ export default function DeveloperDashboardLayout({
       return;
     }
 
+    // Remember the role for /disputes so the right sidebar shows up.
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('lastDashboardRole', 'developer');
+    }
+
     const checkDeveloperStatus = async () => {
       try {
         const response = await fetch(

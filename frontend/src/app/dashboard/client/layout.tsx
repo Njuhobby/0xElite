@@ -28,6 +28,11 @@ export default function ClientDashboardLayout({
       return;
     }
 
+    // Remember the role for /disputes so the right sidebar shows up.
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('lastDashboardRole', 'client');
+    }
+
     const checkClientStatus = async () => {
       try {
         const response = await fetch(
