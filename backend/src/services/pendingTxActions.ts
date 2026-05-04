@@ -268,12 +268,14 @@ async function handleApproveMilestone(
   // Credit the developer with what they were paid. The DB trigger on
   // developers (recalculate_voting_power) will recompute voting_power.
   let developerAddress: string | null = null;
+  let projectTitle: string | null = null;
   if (developerPayment != null && developerPayment > 0) {
-    const projectResult = await client.query<{ assigned_developer: string | null }>(
-      'SELECT assigned_developer FROM projects WHERE id = $1',
+    const projectResult = await client.query<{ assigned_developer: string | null; title: string }>(
+      'SELECT assigned_developer, title FROM projects WHERE id = $1',
       [row.entity_id]
     );
     developerAddress = projectResult.rows[0]?.assigned_developer ?? null;
+    projectTitle = projectResult.rows[0]?.title ?? null;
     if (developerAddress) {
       await client.query(
         `UPDATE developers
@@ -355,6 +357,10 @@ async function handleApproveMilestone(
   // reflects their reputation. Failures are logged but not retried — the
   // next approval / review will reconcile.
   const devForSync = developerAddress;
+  const projectId = row.entity_id;
+  const projectCompleted = remaining.rows[0]!.n === 0;
+  const paymentForNotification = developerPayment;
+  const titleForNotification = projectTitle ?? 'your project';
   return {
     action: 'approve_milestone',
     postCommit: async () => {
@@ -365,6 +371,28 @@ async function handleApproveMilestone(
           developerAddress: devForSync,
           error: err,
         });
+      }
+      // Tell the dev they got paid. The amount may be null if the event
+      // couldn't be parsed; in that case skip the dollar figure.
+      const amountClause =
+        paymentForNotification != null
+          ? ` ${paymentForNotification.toFixed(2)} USDC has been released to your wallet.`
+          : '';
+      await createNotification(
+        devForSync,
+        'milestone_paid',
+        'Milestone approved & payment released',
+        `Your milestone in "${titleForNotification}" was approved on-chain.${amountClause}`,
+        `/dashboard/developer/projects/${projectId}`
+      );
+      if (projectCompleted) {
+        await createNotification(
+          devForSync,
+          'project_completed',
+          'Project completed',
+          `All milestones on "${titleForNotification}" have been approved. Reviews are now open.`,
+          `/dashboard/developer/projects/${projectId}`
+        );
       }
     },
   };
