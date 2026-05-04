@@ -88,6 +88,7 @@ const disputeDAOAbi = [
   'function getDisputeTimeline(uint256) view returns (string, string, uint256, uint256, uint256)',
   'function getDisputeVoting(uint256) view returns (uint256, uint256, uint256, uint256)',
   'function quorumNumerator() view returns (uint256)',
+  'function startVoting(uint256 disputeId) external',
   'function executeResolution(uint256 disputeId) external',
   'event DisputeCreated(uint256 indexed disputeId, uint256 indexed projectId, address indexed initiator)',
   'event EvidenceSubmitted(uint256 indexed disputeId, address indexed party, string evidenceURI)',

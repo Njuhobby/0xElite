@@ -16,7 +16,13 @@
  *      mint/burn xELITE to repair. Keyed off derived-state mismatches in the
  *      developers table.
  *
- *   3. sweepOverdueDisputes
+ *   3. sweepEvidenceDeadlines
+ *      Find disputes whose evidence_deadline has passed but status is still
+ *      'open'. Same EVM-no-cron reason as task 4 — startVoting is permissionless
+ *      on the contract but somebody has to call it. Backend acts as keeper.
+ *      DB row update flows through chainReconciler picking up VotingStarted.
+ *
+ *   4. sweepOverdueDisputes
  *      Find disputes whose voting_deadline has passed but status is still
  *      'voting'. The EVM has no cron — without an external trigger after the
  *      deadline, disputes (and the escrowed funds) would stay stuck. Two
@@ -45,11 +51,13 @@ import VotingPowerSync from './votingPowerSync';
 
 const PENDING_TX_INTERVAL = Number(process.env.PENDING_TX_POLL_INTERVAL ?? 5000);
 const VOTING_POWER_INTERVAL = Number(process.env.VOTING_POWER_SWEEP_INTERVAL ?? 300_000);
+const EVIDENCE_DEADLINE_INTERVAL = Number(process.env.EVIDENCE_DEADLINE_SWEEP_INTERVAL ?? 300_000);
 const OVERDUE_DISPUTE_INTERVAL = Number(process.env.OVERDUE_DISPUTE_SWEEP_INTERVAL ?? 300_000);
 const CONFIRMATIONS = Number(process.env.CONFIRMATIONS ?? 1);
 const PENDING_TX_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
 // On-chain DisputeStatus enum: 0=Open, 1=Voting, 2=Resolved
+const DISPUTE_STATUS_OPEN = 0;
 const DISPUTE_STATUS_VOTING = 1;
 
 let provider: ethers.JsonRpcProvider;
@@ -57,6 +65,7 @@ let contracts: Contracts;
 let votingPowerSync: VotingPowerSync;
 let pendingTxRunning = false;
 let votingPowerRunning = false;
+let evidenceDeadlineRunning = false;
 let overdueDisputeRunning = false;
 
 // =============================================================================
@@ -161,7 +170,75 @@ async function sweepVotingPowerDrift(): Promise<void> {
 }
 
 // =============================================================================
-// Task 3 — finalize overdue disputes (keeper for executeResolution)
+// Task 3 — open voting once evidence deadline passes (keeper for startVoting)
+// =============================================================================
+
+async function sweepEvidenceDeadlines(): Promise<void> {
+  if (evidenceDeadlineRunning) return;
+  evidenceDeadlineRunning = true;
+  try {
+    const result = await pool.query(
+      `SELECT id, chain_dispute_id, dispute_number
+         FROM disputes
+        WHERE status = 'open'
+          AND evidence_deadline < NOW()
+          AND chain_dispute_id IS NOT NULL`
+    );
+    if (result.rows.length === 0) return;
+
+    for (const row of result.rows) {
+      try {
+        await openVotingOneDispute(row.chain_dispute_id, row.id);
+      } catch (err) {
+        logger.error('sweepEvidenceDeadlines: handling failed', {
+          disputeId: row.id,
+          chainDisputeId: row.chain_dispute_id,
+          error: err,
+        });
+      }
+    }
+  } catch (err) {
+    logger.error('sweepEvidenceDeadlines: tick failed', { error: err });
+  } finally {
+    evidenceDeadlineRunning = false;
+  }
+}
+
+async function openVotingOneDispute(chainDisputeId: number, disputeId: string): Promise<void> {
+  // Re-check on-chain status before sending — protects against (a) racing
+  // with a manual frontend trigger and (b) a previous sweep tick whose tx
+  // landed but whose DB row hasn't been updated by chainReconciler yet.
+  const core = await contracts.disputeDAO.getDisputeCore(chainDisputeId);
+  const onChainStatus = Number(core[4]);
+  if (onChainStatus !== DISPUTE_STATUS_OPEN) {
+    logger.info('sweepEvidenceDeadlines: already past Open on-chain, skipping', {
+      disputeId,
+      chainDisputeId,
+      onChainStatus,
+    });
+    return;
+  }
+
+  logger.info('sweepEvidenceDeadlines: calling startVoting', {
+    disputeId,
+    chainDisputeId,
+  });
+
+  const tx = await contracts.disputeDAO.startVoting(chainDisputeId);
+  await tx.wait(CONFIRMATIONS);
+
+  // DB update happens via chainReconciler picking up the VotingStarted event
+  // (handleStartVoting flips status='voting', records snapshot + quorum,
+  // notifies xELITE holders).
+  logger.info('sweepEvidenceDeadlines: startVoting mined', {
+    disputeId,
+    chainDisputeId,
+    txHash: tx.hash,
+  });
+}
+
+// =============================================================================
+// Task 4 — finalize overdue disputes (keeper for executeResolution)
 // =============================================================================
 
 async function sweepOverdueDisputes(): Promise<void> {
@@ -293,6 +370,7 @@ export function startConsistencyScheduler(
   logger.info('Starting consistency scheduler', {
     pendingTxIntervalMs: PENDING_TX_INTERVAL,
     votingPowerIntervalMs: VOTING_POWER_INTERVAL,
+    evidenceDeadlineIntervalMs: EVIDENCE_DEADLINE_INTERVAL,
     overdueDisputeIntervalMs: OVERDUE_DISPUTE_INTERVAL,
     confirmations: CONFIRMATIONS,
   });
@@ -300,9 +378,11 @@ export function startConsistencyScheduler(
   // Eager initial pass for all tasks, then schedule recurring ticks.
   void drainPendingTransactions();
   void sweepVotingPowerDrift();
+  void sweepEvidenceDeadlines();
   void sweepOverdueDisputes();
 
   setInterval(drainPendingTransactions, PENDING_TX_INTERVAL);
   setInterval(sweepVotingPowerDrift, VOTING_POWER_INTERVAL);
+  setInterval(sweepEvidenceDeadlines, EVIDENCE_DEADLINE_INTERVAL);
   setInterval(sweepOverdueDisputes, OVERDUE_DISPUTE_INTERVAL);
 }
