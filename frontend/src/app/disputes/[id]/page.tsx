@@ -369,7 +369,7 @@ export default function DisputeDetailPage() {
             <div className="mb-4">
               <div className="flex justify-between text-xs text-gray-500 mb-1">
                 <span>Quorum Progress</span>
-                <span>{quorumPct.toFixed(1)}% of 25% required</span>
+                <span>{totalVW.toFixed(2)} / {quorum.toFixed(2)} required</span>
               </div>
               <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div
