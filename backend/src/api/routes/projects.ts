@@ -1,8 +1,8 @@
 import express, { Request, Response } from 'express';
 import { Pool } from 'pg';
 import { ethers } from 'ethers';
-import { verifySignature } from '../../utils/signature';
 import { logger } from '../../utils/logger';
+import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 
 
 const router = express.Router();
@@ -27,18 +27,6 @@ interface ValidationError {
 
 function validateCreateProject(data: any): ValidationError[] {
   const errors: ValidationError[] = [];
-
-  if (!data.address || typeof data.address !== 'string') {
-    errors.push({ field: 'address', message: 'Valid wallet address required' });
-  }
-
-  if (!data.message || typeof data.message !== 'string') {
-    errors.push({ field: 'message', message: 'Signed message required' });
-  }
-
-  if (!data.signature || typeof data.signature !== 'string') {
-    errors.push({ field: 'signature', message: 'Signature required' });
-  }
 
   if (!data.title || typeof data.title !== 'string' || data.title.length > 200) {
     errors.push({ field: 'title', message: 'Title required (max 200 characters)' });
@@ -92,7 +80,7 @@ function validateCreateProject(data: any): ValidationError[] {
 // POST /api/projects - Create Project (DB only, no on-chain)
 // =====================================================
 
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const validationErrors = validateCreateProject(req.body);
     if (validationErrors.length > 0) {
@@ -103,18 +91,8 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    const { address, message, signature, title, description, requiredSkills, totalBudget, milestones } = req.body;
-
-    // Verify signature
-    const isValidSignature = verifySignature(message, signature, address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
-
-    const clientAddress = address.toLowerCase();
+    const { title, description, requiredSkills, totalBudget, milestones } = req.body;
+    const clientAddress = req.user!.address;
 
     // Ensure client record exists (create minimal if needed)
     await db.query(
@@ -342,26 +320,11 @@ router.get('/:id', async (req: Request, res: Response) => {
 // PUT /api/projects/:id - Update Project (Draft Only)
 // =====================================================
 
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { address, message, signature, title, description, requiredSkills } = req.body;
-
-    if (!address || !message || !signature) {
-      return res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Address, message, and signature required',
-      });
-    }
-
-    // Verify signature
-    const isValidSignature = verifySignature(message, signature, address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
+    const { title, description, requiredSkills } = req.body;
+    const callerAddress = req.user!.address;
 
     // Fetch project
     const projectResult = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
@@ -375,8 +338,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const project = projectResult.rows[0];
 
-    // Check ownership
-    if (project.client_address !== address.toLowerCase()) {
+    if (project.client_address !== callerAddress) {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only project owner can update project',
@@ -538,19 +500,19 @@ router.get('/', async (req: Request, res: Response) => {
 // Called by frontend after createProjectWithMilestones tx confirms
 // =====================================================
 
-router.patch('/:id/contract', async (req: Request, res: Response) => {
+router.patch('/:id/contract', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { address, contractProjectId } = req.body;
+    const { contractProjectId } = req.body;
 
-    if (!address || !contractProjectId) {
+    if (!contractProjectId) {
       return res.status(400).json({
         error: 'VALIDATION_ERROR',
-        message: 'address and contractProjectId required',
+        message: 'contractProjectId required',
       });
     }
 
-    const clientAddress = address.toLowerCase();
+    const clientAddress = req.user!.address;
 
     // Fetch project and verify ownership
     const projectResult = await db.query(
@@ -611,26 +573,10 @@ router.patch('/:id/contract', async (req: Request, res: Response) => {
 // DELETE /api/projects/:id - Delete Draft Project
 // =====================================================
 
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { address, message, signature } = req.body;
-
-    if (!address || !message || !signature) {
-      return res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Address, message, and signature required',
-      });
-    }
-
-    // Verify signature
-    const isValidSignature = verifySignature(message, signature, address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
+    const callerAddress = req.user!.address;
 
     // Fetch project
     const projectResult = await db.query('SELECT * FROM projects WHERE id = $1', [id]);
@@ -644,8 +590,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     const project = projectResult.rows[0];
 
-    // Check ownership
-    if (project.client_address !== address.toLowerCase()) {
+    if (project.client_address !== callerAddress) {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only project owner can delete project',

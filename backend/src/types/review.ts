@@ -11,18 +11,12 @@ export interface Review {
 }
 
 export interface CreateReviewInput {
-  address: string;
-  message: string;
-  signature: string;
   projectId: string;
   rating: number;
   comment?: string;
 }
 
 export interface UpdateReviewInput {
-  address: string;
-  message: string;
-  signature: string;
   rating?: number;
   comment?: string | null;
 }

@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import { parseUnits, keccak256, encodePacked, Address } from 'viem';
 import MilestoneManager from '@/components/project/MilestoneManager';
 import { PROJECT_MANAGER_ABI, getProjectManagerAddress, getEscrowVaultAddress, TX_CONFIRMATIONS } from '@/config/contracts';
+import { authFetch } from '@/lib/api';
 
 interface Milestone {
   title: string;
@@ -115,8 +116,6 @@ export default function CreateProjectPage() {
   // Guard to prevent duplicate calls during re-renders
   const transitioningRef = useRef(false);
   const prevStepRef = useRef<DepositStep>('form');
-
-  const { signMessage } = useSignMessage();
 
   const {
     data: createHash,
@@ -374,68 +373,41 @@ export default function CreateProjectPage() {
     setDepositStep('saving_draft');
 
     try {
-      // Step 1: Create draft in backend (sign message for auth)
-      const message = `Create project on 0xElite\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
+      const response = await authFetch('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          requiredSkills: formData.requiredSkills,
+          totalBudget: parseFloat(formData.totalBudget),
+          milestones: milestones.map(m => ({
+            title: m.title,
+            description: m.description,
+            deliverables: m.deliverables.filter(d => d.trim()),
+            budget: m.budget,
+          })),
+        }),
+      });
 
-      signMessage(
-        { message },
-        {
-          onSuccess: async (signature) => {
-            try {
-              const response = await fetch(`${API_URL}/api/projects`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  address,
-                  message,
-                  signature,
-                  title: formData.title,
-                  description: formData.description,
-                  requiredSkills: formData.requiredSkills,
-                  totalBudget: parseFloat(formData.totalBudget),
-                  milestones: milestones.map(m => ({
-                    title: m.title,
-                    description: m.description,
-                    deliverables: m.deliverables.filter(d => d.trim()),
-                    budget: m.budget,
-                  })),
-                }),
-              });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to create project');
+      }
 
-              if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to create project');
-              }
+      const data = await response.json();
+      setCreatedProject({ id: data.id, contractProjectId: '' });
 
-              const data = await response.json();
-              // Save project id (no contractProjectId yet)
-              setCreatedProject({ id: data.id, contractProjectId: '' });
+      setDepositStep('creating_onchain');
+      const totalBudgetUsdc = parseUnits(formData.totalBudget, 6);
+      const milestoneBudgets = milestones.map(m => parseUnits(m.budget.toFixed(6), 6));
+      const milestoneHashes = milestones.map(m => computeMilestoneHash(m));
 
-              // Step 2: Send on-chain tx
-              setDepositStep('creating_onchain');
-              const totalBudgetUsdc = parseUnits(formData.totalBudget, 6);
-              const milestoneBudgets = milestones.map(m => parseUnits(m.budget.toFixed(6), 6));
-              const milestoneHashes = milestones.map(m => computeMilestoneHash(m));
-
-              createProjectOnChain({
-                address: PROJECT_MANAGER_ADDRESS,
-                abi: PROJECT_MANAGER_ABI,
-                functionName: 'createProjectWithMilestones',
-                args: [totalBudgetUsdc, milestoneBudgets, milestoneHashes],
-              });
-            } catch (err) {
-              setError(err instanceof Error ? err.message : 'An error occurred');
-              setDepositStep('form');
-              setIsSubmitting(false);
-            }
-          },
-          onError: (err) => {
-            setError(err.message);
-            setDepositStep('form');
-            setIsSubmitting(false);
-          },
-        }
-      );
+      createProjectOnChain({
+        address: PROJECT_MANAGER_ADDRESS,
+        abi: PROJECT_MANAGER_ABI,
+        functionName: 'createProjectWithMilestones',
+        args: [totalBudgetUsdc, milestoneBudgets, milestoneHashes],
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setDepositStep('form');

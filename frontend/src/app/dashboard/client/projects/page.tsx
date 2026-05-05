@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
-import { useRouter } from 'next/navigation';
+import { useAccount } from 'wagmi';
 import Link from 'next/link';
+import { authFetch } from '@/lib/api';
 
 interface Project {
   id: string;
@@ -29,8 +29,6 @@ const statusConfig: Record<string, { color: string; label: string }> = {
 
 export default function ClientProjectsPage() {
   const { address } = useAccount();
-  const { signMessageAsync } = useSignMessage();
-  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -78,23 +76,11 @@ export default function ClientProjectsPage() {
 
     try {
       setDeletingId(projectId);
-      const message = `Delete project ${projectId}\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
-      const signature = await signMessageAsync({ message });
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/projects/${projectId}`,
-        {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, message, signature }),
-        }
-      );
-
+      const response = await authFetch(`/api/projects/${projectId}`, { method: 'DELETE' });
       if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.message || 'Failed to delete project');
       }
-
       await fetchProjects();
     } catch (err) {
       console.error('Failed to delete project:', err);

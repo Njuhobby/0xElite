@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useWriteContract, useReadContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
+import { useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi';
 import { Address } from 'viem';
 import { targetChain } from '@/config/wagmi';
 import { TX_CONFIRMATIONS } from '@/config/contracts';
+import { authFetch } from '@/lib/api';
+import { useAuth } from '@/providers/AuthProvider';
 
 // Extract a user-friendly error message from wallet/viem errors
 function getShortErrorMessage(error: unknown, fallback: string): string {
@@ -164,8 +166,9 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
     confirmations: TX_CONFIRMATIONS,
   });
 
-  // Sign message for backend
-  const { signMessageAsync } = useSignMessage();
+  // Picks up the developer role after registration so subsequent role-gated
+  // requests see the new role without an extra signature.
+  const { refreshRoles } = useAuth();
 
   // On mount: if allowance is already sufficient, skip to stake
   useEffect(() => {
@@ -309,17 +312,9 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
       // Step 1: Save profile to database if not already saved
       const checkRes = await fetch(`${API_URL}/api/developers/${address}`);
       if (!checkRes.ok) {
-        // Developer doesn't exist yet — create profile
-        const message = `Welcome to 0xElite!\n\nPlease sign this message to verify your wallet ownership.\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
-        const signature = await signMessageAsync({ message });
-
-        const response = await fetch(`${API_URL}/api/developers`, {
+        const response = await authFetch('/api/developers', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            address,
-            message,
-            signature,
             email: formData.email,
             githubUsername: formData.githubUsername || undefined,
             skills: formData.skills,
@@ -329,9 +324,12 @@ export default function StakeFlow({ address, formData, onBack, onSuccess }: Prop
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
+          const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || 'Failed to save profile');
         }
+
+        // Pick up the new `developer` role in the JWT.
+        await refreshRoles().catch(() => {});
       }
 
       // Step 2: Send stake transaction

@@ -62,21 +62,6 @@ export interface ValidationError {
 export function validateCreateDeveloper(data: any): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  // Validate address
-  if (!data.address || !isValidAddress(data.address)) {
-    errors.push({ field: 'address', message: 'Invalid Ethereum address format' });
-  }
-
-  // Validate signature
-  if (!data.signature || typeof data.signature !== 'string') {
-    errors.push({ field: 'signature', message: 'Signature is required' });
-  }
-
-  // Validate message
-  if (!data.message || typeof data.message !== 'string') {
-    errors.push({ field: 'message', message: 'Message is required' });
-  }
-
   // Validate email
   if (!data.email || !isValidEmail(data.email)) {
     errors.push({ field: 'email', message: 'Invalid email format' });
@@ -110,21 +95,6 @@ export function validateCreateDeveloper(data: any): ValidationError[] {
  */
 export function validateUpdateDeveloper(data: any): ValidationError[] {
   const errors: ValidationError[] = [];
-
-  // Validate address
-  if (!data.address || !isValidAddress(data.address)) {
-    errors.push({ field: 'address', message: 'Invalid Ethereum address format' });
-  }
-
-  // Validate signature
-  if (!data.signature || typeof data.signature !== 'string') {
-    errors.push({ field: 'signature', message: 'Signature is required' });
-  }
-
-  // Validate message
-  if (!data.message || typeof data.message !== 'string') {
-    errors.push({ field: 'message', message: 'Message is required' });
-  }
 
   // Validate email (optional)
   if (data.email && !isValidEmail(data.email)) {

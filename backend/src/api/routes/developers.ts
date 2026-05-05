@@ -1,17 +1,17 @@
 import { Router } from 'express';
 import { pool } from '../../config/database';
-import { verifySignature } from '../../utils/signature';
 import { validateCreateDeveloper, validateUpdateDeveloper } from '../../utils/validation';
 import type { Developer, CreateDeveloperInput, UpdateDeveloperInput } from '../../types/developer';
 import { getUnlockStatus, getUnlockHistory } from '../../services/unlockService';
+import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 
 const router = Router();
 
 /**
  * POST /api/developers
- * Create a new developer profile
+ * Create a new developer profile (auth: any authenticated wallet, registers itself)
  */
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const input: CreateDeveloperInput = req.body;
 
@@ -25,25 +25,10 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Verify signature
-    const isValidSignature = verifySignature(
-      input.message,
-      input.signature,
-      input.address
-    );
-
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
-
     const client = await pool.connect();
 
     try {
-      // Normalize wallet address to lowercase
-      const walletAddress = input.address.toLowerCase();
+      const walletAddress = req.user!.address;
 
       // Check if developer already exists
       const existingDev = await client.query(
@@ -153,7 +138,8 @@ router.get('/:address', async (req, res) => {
 
     const developer = result.rows[0]!;
 
-    // Check if requesting user is the owner (via optional auth header)
+    // Owner-only fields are returned when caller has a JWT for this wallet.
+    // Optional auth — bare GET still works for public profile view.
     const requestingAddress = req.headers['x-wallet-address'] as string | undefined;
     const isOwner = requestingAddress?.toLowerCase() === walletAddress;
 
@@ -198,12 +184,11 @@ router.get('/:address', async (req, res) => {
  * PUT /api/developers/:address
  * Update developer profile (owner only)
  */
-router.put('/:address', async (req, res) => {
+router.put('/:address', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { address } = req.params;
     const input: UpdateDeveloperInput = req.body;
 
-    // Validate input
     const validationErrors = validateUpdateDeveloper(input);
     if (validationErrors.length > 0) {
       return res.status(400).json({
@@ -213,25 +198,9 @@ router.put('/:address', async (req, res) => {
       });
     }
 
-    // Verify signature
-    const isValidSignature = verifySignature(
-      input.message,
-      input.signature,
-      input.address
-    );
+    const walletAddress = (address as string).toLowerCase();
 
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
-
-    const walletAddress = address.toLowerCase();
-    const inputAddress = input.address.toLowerCase();
-
-    // Verify that the address in the URL matches the signed address
-    if (walletAddress !== inputAddress) {
+    if (walletAddress !== req.user!.address) {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'You can only edit your own profile',

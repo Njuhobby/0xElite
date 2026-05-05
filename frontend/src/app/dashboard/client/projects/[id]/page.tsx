@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import SubmitReviewModal from '@/components/reviews/SubmitReviewModal';
 import RaiseDisputeModal from '@/components/disputes/RaiseDisputeModal';
 import MilestoneCard from '@/components/project/MilestoneCard';
+import { authFetch } from '@/lib/api';
 
 interface Milestone {
   id: string;
@@ -72,7 +73,6 @@ const statusConfig: Record<string, { color: string; label: string }> = {
 export default function ClientProjectDetailPage() {
   const { id } = useParams();
   const { address } = useAccount();
-  const { signMessageAsync } = useSignMessage();
   const router = useRouter();
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
@@ -140,23 +140,11 @@ export default function ClientProjectDetailPage() {
 
     try {
       setActionLoading('delete');
-      const message = `Delete project ${project.id}\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
-      const signature = await signMessageAsync({ message });
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/projects/${project.id}`,
-        {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, message, signature }),
-        }
-      );
-
+      const response = await authFetch(`/api/projects/${project.id}`, { method: 'DELETE' });
       if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.message || 'Failed to delete project');
       }
-
       router.push('/dashboard/client/projects');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete project');

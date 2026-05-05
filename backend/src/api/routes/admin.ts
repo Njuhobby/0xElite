@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { ethers } from 'ethers';
 import { pool } from '../../config/database';
-import { verifyAdmin } from '../../utils/auth';
 import type { Developer } from '../../types/developer';
 import { createNotification } from '../../services/notificationService';
 import { processPendingQueue } from '../../services/matchingAlgorithm';
+import { requireAuth, requireRole, AuthenticatedRequest } from '../middleware/requireAuth';
 
 const router = Router();
 
@@ -83,22 +83,13 @@ router.get('/developers', async (req, res) => {
  * PUT /api/admin/developers/:address/approve
  * Admin approves a staked developer (staked → active)
  */
-router.put('/developers/:address/approve', async (req, res) => {
+router.put('/developers/:address/approve', requireAuth, requireRole('admin'), async (req: AuthenticatedRequest, res) => {
   try {
     const { address: developerAddress } = req.params;
-    const { address, message, signature, notes } = req.body;
+    const { notes } = req.body;
 
-    // Verify admin
-    const auth = verifyAdmin(address, message, signature);
-    if (!auth.valid) {
-      return res.status(auth.error!.status).json({
-        error: auth.error!.code,
-        message: auth.error!.message,
-      });
-    }
-
-    const walletAddress = developerAddress.toLowerCase();
-    const adminAddress = address.toLowerCase();
+    const walletAddress = (developerAddress as string).toLowerCase();
+    const adminAddress = req.user!.address;
 
     // Find developer
     const existing = await pool.query<Developer>(
@@ -174,12 +165,11 @@ router.put('/developers/:address/approve', async (req, res) => {
  * PUT /api/admin/developers/:address/reject
  * Admin rejects a staked developer (staked → rejected)
  */
-router.put('/developers/:address/reject', async (req, res) => {
+router.put('/developers/:address/reject', requireAuth, requireRole('admin'), async (req: AuthenticatedRequest, res) => {
   try {
     const { address: developerAddress } = req.params;
-    const { address, message, signature, reason } = req.body;
+    const { reason } = req.body;
 
-    // Validate required reason
     if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
       return res.status(400).json({
         error: 'VALIDATION_ERROR',
@@ -187,17 +177,8 @@ router.put('/developers/:address/reject', async (req, res) => {
       });
     }
 
-    // Verify admin
-    const auth = verifyAdmin(address, message, signature);
-    if (!auth.valid) {
-      return res.status(auth.error!.status).json({
-        error: auth.error!.code,
-        message: auth.error!.message,
-      });
-    }
-
-    const walletAddress = developerAddress.toLowerCase();
-    const adminAddress = address.toLowerCase();
+    const walletAddress = (developerAddress as string).toLowerCase();
+    const adminAddress = req.user!.address;
 
     // Find developer
     const existing = await pool.query<Developer>(

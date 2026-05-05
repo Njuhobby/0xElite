@@ -1,7 +1,7 @@
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
 import { Pool } from 'pg';
-import { verifySignature } from '../../utils/signature';
 import { logger } from '../../utils/logger';
+import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 
 const router = express.Router();
 
@@ -15,28 +15,10 @@ export function initialize(database: Pool) {
 // POST /api/clients - Create/Update Client Profile
 // =====================================================
 
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { address, message, signature, email, companyName, description, website } = req.body;
-
-    // Validation
-    if (!address || !message || !signature) {
-      return res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Address, message, and signature required',
-      });
-    }
-
-    // Verify signature
-    const isValidSignature = verifySignature(message, signature, address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
-
-    const clientAddress = (address as string).toLowerCase();
+    const { email, companyName, description, website } = req.body;
+    const clientAddress = req.user!.address;
 
     // Check if email is already used by another client
     if (email) {
@@ -104,7 +86,7 @@ router.post('/', async (req: Request, res: Response) => {
 // GET /api/clients/:address - View Client Profile
 // =====================================================
 
-router.get('/:address', async (req: Request, res: Response) => {
+router.get('/:address', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { address } = req.params;
     const viewerAddress = req.headers['x-wallet-address'] as string | undefined;

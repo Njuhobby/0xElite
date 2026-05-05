@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { isAdminAddress } from '@/lib/auth';
+import { authFetch } from '@/lib/api';
 
 interface StakedDeveloper {
   walletAddress: string;
@@ -33,7 +34,6 @@ const statusConfig: Record<string, { color: string; label: string }> = {
 
 export default function AdminDashboardPage() {
   const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
 
   const [developers, setDevelopers] = useState<StakedDeveloper[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -80,20 +80,13 @@ export default function AdminDashboardPage() {
     setSuccessMessage('');
 
     try {
-      const message = `Approve developer ${developerAddress} for 0xElite`;
-      const signature = await signMessageAsync({ message });
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/admin/developers/${developerAddress}/approve`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, message, signature }),
-        }
-      );
+      const response = await authFetch(`/api/admin/developers/${developerAddress}/approve`, {
+        method: 'PUT',
+        body: JSON.stringify({}),
+      });
 
       if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.message || 'Failed to approve developer');
       }
 
@@ -123,20 +116,13 @@ export default function AdminDashboardPage() {
     setSuccessMessage('');
 
     try {
-      const message = `Reject developer ${developerAddress} for 0xElite`;
-      const signature = await signMessageAsync({ message });
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/admin/developers/${developerAddress}/reject`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, message, signature, reason }),
-        }
-      );
+      const response = await authFetch(`/api/admin/developers/${developerAddress}/reject`, {
+        method: 'PUT',
+        body: JSON.stringify({ reason }),
+      });
 
       if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.message || 'Failed to reject developer');
       }
 

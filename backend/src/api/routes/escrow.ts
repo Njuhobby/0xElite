@@ -1,10 +1,9 @@
 import express, { Request, Response } from 'express';
 import { Pool } from 'pg';
 import { ethers } from 'ethers';
-import { verifySignature } from '../../utils/signature';
-import { isAdmin } from '../../utils/auth';
 import { assignDeveloperToProject } from '../../services/matchingAlgorithm';
 import { logger } from '../../utils/logger';
+import { requireAuth, requireRole, AuthenticatedRequest } from '../middleware/requireAuth';
 
 const router = express.Router();
 
@@ -24,24 +23,15 @@ export function initialize(database: Pool, contract: ethers.Contract, pmContract
  * POST /api/escrow/deposit
  * Record escrow deposit (called after on-chain deposit)
  */
-router.post('/deposit', async (req: Request, res: Response) => {
+router.post('/deposit', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { address, message, signature, projectId, amount, txHash } = req.body;
+    const { projectId, amount, txHash } = req.body;
+    const callerAddress = req.user!.address;
 
-    // Validate required fields
-    if (!address || !message || !signature || !projectId || !amount || !txHash) {
+    if (!projectId || !amount || !txHash) {
       return res.status(400).json({
         error: 'VALIDATION_ERROR',
-        message: 'Missing required fields: address, message, signature, projectId, amount, txHash',
-      });
-    }
-
-    // Verify signature
-    const isValidSignature = verifySignature(message, signature, address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
+        message: 'Missing required fields: projectId, amount, txHash',
       });
     }
 
@@ -60,8 +50,7 @@ router.post('/deposit', async (req: Request, res: Response) => {
 
     const project = projectResult.rows[0];
 
-    // Verify caller is project client
-    if (project.client_address.toLowerCase() !== address.toLowerCase()) {
+    if (project.client_address.toLowerCase() !== callerAddress) {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only project client can deposit escrow',
@@ -332,31 +321,14 @@ router.get('/:projectId/history', async (req: Request, res: Response) => {
  * POST /api/escrow/freeze
  * Freeze escrow to prevent releases (admin/dispute only)
  */
-router.post('/freeze', async (req: Request, res: Response) => {
+router.post('/freeze', requireAuth, requireRole('admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { address, message, signature, projectId, reason } = req.body;
+    const { projectId, reason } = req.body;
 
-    // Validate required fields
-    if (!address || !message || !signature || !projectId || !reason) {
+    if (!projectId || !reason) {
       return res.status(400).json({
         error: 'VALIDATION_ERROR',
-        message: 'Missing required fields: address, message, signature, projectId, reason',
-      });
-    }
-
-    // Verify signature
-    const isValidSignature = verifySignature(message, signature, address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
-
-    if (!isAdmin(address)) {
-      return res.status(403).json({
-        error: 'NOT_AUTHORIZED',
-        message: 'Only admin wallets can freeze escrow',
+        message: 'Missing required fields: projectId, reason',
       });
     }
 
@@ -418,31 +390,14 @@ router.post('/freeze', async (req: Request, res: Response) => {
  * POST /api/escrow/unfreeze
  * Unfreeze escrow after dispute resolution (admin/dispute only)
  */
-router.post('/unfreeze', async (req: Request, res: Response) => {
+router.post('/unfreeze', requireAuth, requireRole('admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { address, message, signature, projectId, resolutionNotes } = req.body;
+    const { projectId } = req.body;
 
-    // Validate required fields
-    if (!address || !message || !signature || !projectId) {
+    if (!projectId) {
       return res.status(400).json({
         error: 'VALIDATION_ERROR',
-        message: 'Missing required fields: address, message, signature, projectId',
-      });
-    }
-
-    // Verify signature
-    const isValidSignature = verifySignature(message, signature, address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
-
-    if (!isAdmin(address)) {
-      return res.status(403).json({
-        error: 'NOT_AUTHORIZED',
-        message: 'Only admin wallets can unfreeze escrow',
+        message: 'Missing required field: projectId',
       });
     }
 

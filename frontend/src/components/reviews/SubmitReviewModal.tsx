@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount } from 'wagmi';
 import RatingStars from './RatingStars';
+import { authFetch } from '@/lib/api';
 
 interface SubmitReviewModalProps {
   projectId: string;
@@ -13,7 +14,6 @@ interface SubmitReviewModalProps {
 
 export default function SubmitReviewModal({ projectId, projectTitle, onClose, onSuccess }: SubmitReviewModalProps) {
   const { address } = useAccount();
-  const { signMessageAsync } = useSignMessage();
 
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -31,27 +31,17 @@ export default function SubmitReviewModal({ projectId, projectTitle, onClose, on
     setError('');
 
     try {
-      const message = `Submit review for project ${projectId}\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
-      const signature = await signMessageAsync({ message });
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/reviews`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address,
-            message,
-            signature,
-            projectId,
-            rating,
-            comment: comment.trim() || undefined,
-          }),
-        }
-      );
+      const response = await authFetch('/api/reviews', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId,
+          rating,
+          comment: comment.trim() || undefined,
+        }),
+      });
 
       if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.message || 'Failed to submit review');
       }
 

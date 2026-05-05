@@ -20,9 +20,6 @@ export interface Developer {
 }
 
 export interface CreateDeveloperInput {
-  address: string;
-  message: string;
-  signature: string;
   email: string;
   githubUsername?: string;
   skills: string[];
@@ -31,9 +28,6 @@ export interface CreateDeveloperInput {
 }
 
 export interface UpdateDeveloperInput {
-  address: string;
-  message: string;
-  signature: string;
   email?: string;
   skills?: string[];
   bio?: string;

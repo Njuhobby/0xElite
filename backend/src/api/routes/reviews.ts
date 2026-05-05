@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { pool } from '../../config/database';
-import { verifySignature } from '../../utils/signature';
-import { isValidAddress } from '../../utils/validation';
 import { logger } from '../../utils/logger';
 import type { Review, CreateReviewInput, UpdateReviewInput } from '../../types/review';
 import VotingPowerSync from '../../services/votingPowerSync';
+import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 
 const router = Router();
 
@@ -24,11 +23,10 @@ const EDIT_WINDOW_DAYS = 7;
  * POST /api/reviews
  * Submit a new review for a developer or client after project completion
  */
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const input: CreateReviewInput = req.body;
 
-    // Validate input
     const errors = validateCreateReview(input);
     if (errors.length > 0) {
       return res.status(400).json({
@@ -38,16 +36,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Verify signature
-    const isValidSignature = verifySignature(input.message, input.signature, input.address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
-
-    const reviewerAddress = input.address.toLowerCase();
+    const reviewerAddress = req.user!.address;
     const client = await pool.connect();
 
     try {
@@ -380,25 +369,10 @@ router.get('/project/:projectId', async (req, res) => {
  * PUT /api/reviews/:id
  * Edit an existing review (within 7 days of submission)
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const input: UpdateReviewInput = req.body;
-
-    // Validate input
-    if (!input.address || !isValidAddress(input.address)) {
-      return res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Invalid address format',
-      });
-    }
-
-    if (!input.signature || !input.message) {
-      return res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        message: 'Signature and message are required',
-      });
-    }
 
     if (input.rating !== undefined && (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)) {
       return res.status(400).json({
@@ -416,16 +390,7 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    // Verify signature
-    const isValidSignature = verifySignature(input.message, input.signature, input.address);
-    if (!isValidSignature) {
-      return res.status(401).json({
-        error: 'INVALID_SIGNATURE',
-        message: 'Wallet signature verification failed',
-      });
-    }
-
-    const reviewerAddress = input.address.toLowerCase();
+    const reviewerAddress = req.user!.address;
     const dbClient = await pool.connect();
 
     try {
@@ -531,18 +496,6 @@ router.put('/:id', async (req, res) => {
  */
 function validateCreateReview(data: any): Array<{ field: string; message: string }> {
   const errors: Array<{ field: string; message: string }> = [];
-
-  if (!data.address || !isValidAddress(data.address)) {
-    errors.push({ field: 'address', message: 'Invalid Ethereum address format' });
-  }
-
-  if (!data.signature || typeof data.signature !== 'string') {
-    errors.push({ field: 'signature', message: 'Signature is required' });
-  }
-
-  if (!data.message || typeof data.message !== 'string') {
-    errors.push({ field: 'message', message: 'Message is required' });
-  }
 
   if (!data.projectId || typeof data.projectId !== 'string') {
     errors.push({ field: 'projectId', message: 'Project ID is required' });

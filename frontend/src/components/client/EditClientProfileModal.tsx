@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useSignMessage } from 'wagmi';
+import { authFetch } from '@/lib/api';
+import { useAuth } from '@/providers/AuthProvider';
 
 interface ClientProfile {
   walletAddress: string;
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export default function EditClientProfileModal({ client, onClose, onSuccess }: Props) {
-  const { signMessageAsync } = useSignMessage();
+  const { refreshRoles } = useAuth();
   const [formData, setFormData] = useState({
     email: client.email || '',
     companyName: client.companyName || '',
@@ -39,30 +40,23 @@ export default function EditClientProfileModal({ client, onClose, onSuccess }: P
     setIsSubmitting(true);
 
     try {
-      const message = `Update client profile on 0xElite\n\nWallet: ${client.walletAddress}\nTimestamp: ${Date.now()}`;
-      const signature = await signMessageAsync({ message });
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/clients`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address: client.walletAddress,
-            message,
-            signature,
-            email: formData.email,
-            companyName: formData.companyName,
-            description: formData.description || undefined,
-            website: formData.website || undefined,
-          }),
-        }
-      );
+      const response = await authFetch('/api/clients', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: formData.email,
+          companyName: formData.companyName,
+          description: formData.description || undefined,
+          website: formData.website || undefined,
+        }),
+      });
 
       if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.message || 'Failed to update profile');
       }
+
+      // First-time registration grants the `client` role — pick it up.
+      await refreshRoles().catch(() => {});
 
       onSuccess();
     } catch (err) {

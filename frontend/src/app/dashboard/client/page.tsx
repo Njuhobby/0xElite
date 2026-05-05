@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount } from 'wagmi';
 import EditClientProfileModal from '@/components/client/EditClientProfileModal';
 import { useClientStatus } from './ClientContext';
+import { authFetch } from '@/lib/api';
+import { useAuth } from '@/providers/AuthProvider';
 
 interface ClientProfile {
   walletAddress: string;
@@ -21,7 +23,7 @@ interface ClientProfile {
 
 export default function ClientDashboardPage() {
   const { address } = useAccount();
-  const { signMessageAsync } = useSignMessage();
+  const { refreshRoles } = useAuth();
   const { setClientStatus } = useClientStatus();
   const [client, setClient] = useState<ClientProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,31 +80,22 @@ export default function ClientDashboardPage() {
     setRegError('');
 
     try {
-      const message = `Register as client on 0xElite\n\nWallet: ${address}\nTimestamp: ${Date.now()}`;
-      const signature = await signMessageAsync({ message });
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/clients`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address,
-            message,
-            signature,
-            email: regForm.email,
-            companyName: regForm.companyName,
-            description: regForm.description || undefined,
-            website: regForm.website || undefined,
-          }),
-        }
-      );
+      const response = await authFetch('/api/clients', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: regForm.email,
+          companyName: regForm.companyName,
+          description: regForm.description || undefined,
+          website: regForm.website || undefined,
+        }),
+      });
 
       if (!response.ok) {
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.message || 'Registration failed');
       }
 
+      await refreshRoles().catch(() => {});
       await fetchClient();
       setClientStatus('registered');
     } catch (err) {

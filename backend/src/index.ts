@@ -13,6 +13,7 @@ import disputesRouter from './api/routes/disputes';
 import adminRouter, { initialize as initializeAdmin } from './api/routes/admin';
 import notificationsRouter from './api/routes/notifications';
 import transactionsRouter, { initialize as initializeTransactions } from './api/routes/transactions';
+import authRouter from './api/routes/auth';
 import { pool } from './config/database';
 import { startConsistencyScheduler } from './services/consistencyScheduler';
 import { startChainReconciler } from './services/chainReconciler';
@@ -130,6 +131,7 @@ initializeReviews(votingPowerSync);
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:3000',
   credentials: true,
+  exposedHeaders: ['X-New-Token'],
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -146,6 +148,7 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
+app.use('/api/auth', authRouter);
 app.use('/api/developers', developersRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/clients', clientsRouter);

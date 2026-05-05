@@ -17,9 +17,6 @@ export interface Client {
 }
 
 export interface CreateClientInput {
-  address: string;
-  message: string;
-  signature: string;
   email: string;
   companyName: string;
   description?: string;
@@ -27,9 +24,6 @@ export interface CreateClientInput {
 }
 
 export interface UpdateClientInput {
-  address: string;
-  message: string;
-  signature: string;
   email?: string;
   companyName?: string;
   description?: string;

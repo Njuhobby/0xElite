@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useSignMessage } from 'wagmi';
+import { authFetch } from '@/lib/api';
 
 interface Developer {
   walletAddress: string;
@@ -36,25 +36,12 @@ export default function EditProfileModal({ developer, onClose, onSuccess }: Prop
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const { signMessageAsync } = useSignMessage();
-
-  const generateMessage = () => {
-    const timestamp = Date.now();
-    return `Update profile for 0xElite
-
-Wallet: ${developer.walletAddress}
-Timestamp: ${timestamp}`;
-  };
-
-  const submitUpdate = async (signature: string) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsSubmitting(true);
     try {
-      const message = generateMessage();
-      const updates: Record<string, unknown> = {
-        address: developer.walletAddress,
-        message,
-        signature,
-      };
-
+      const updates: Record<string, unknown> = {};
       if (formData.email !== developer.email) updates.email = formData.email;
       if (JSON.stringify(formData.skills) !== JSON.stringify(developer.skills)) updates.skills = formData.skills;
       if (formData.bio !== developer.bio) updates.bio = formData.bio || null;
@@ -63,19 +50,13 @@ Timestamp: ${timestamp}`;
       }
       if (formData.availability !== developer.availability) updates.availability = formData.availability;
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/developers/${developer.walletAddress}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(updates),
-        }
-      );
+      const response = await authFetch(`/api/developers/${developer.walletAddress}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || 'Failed to update profile');
       }
 
@@ -83,20 +64,6 @@ Timestamp: ${timestamp}`;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsSubmitting(true);
-    try {
-      const message = generateMessage();
-      const signature = await signMessageAsync({ message });
-      await submitUpdate(signature);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign message');
       setIsSubmitting(false);
     }
   };
